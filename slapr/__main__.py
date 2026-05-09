@@ -17,13 +17,17 @@ from .slack import SlackClient, WebSlackBackend
 slack_backend = WebSlackBackend(client=slack_sdk.WebClient(os.environ["SLACK_API_TOKEN"]))
 slack_client = SlackClient(backend=slack_backend)
 
+slack_channel_ids = [
+    ch.strip() for ch in os.environ["SLACK_CHANNEL_ID"].split(",") if ch.strip()
+]
+
 review_map = None
 review_map_path = os.environ.get("SLAPR_REVIEW_MAP")
 if review_map_path:
     review_map = ReviewMap.load(
         file_path=review_map_path,
         slack_client=slack_client,
-        default_channel_id=os.environ["SLACK_CHANNEL_ID"],
+        default_channel_id=slack_channel_ids[0] if slack_channel_ids else "",
     )
 
 config = Config(
@@ -35,15 +39,15 @@ config = Config(
             repo=os.environ["GITHUB_REPOSITORY"],
         )
     ),
-    slack_channel_id=os.environ["SLACK_CHANNEL_ID"],
+    slack_channel_ids=slack_channel_ids,
     slapr_bot_user_id=os.environ["SLAPR_BOT_USER_ID"],
     number_of_approvals_required=max(1, int(os.environ.get("SLAPR_NUMBER_OF_APPROVALS_REQUIRED", 1))),
-    emoji_review_started=os.environ.get("SLAPR_EMOJI_REVIEW_STARTED", "review_started"),
-    emoji_approved=os.environ.get("SLAPR_EMOJI_APPROVED", "approved"),
-    emoji_needs_change=os.environ.get("SLAPR_EMOJI_CHANGES_REQUESTED", "changes_requested"),
-    emoji_merged=os.environ.get("SLAPR_EMOJI_MERGED", "merged"),
-    emoji_closed=os.environ.get("SLAPR_EMOJI_CLOSED", "closed"),
-    emoji_commented=os.environ.get("SLAPR_EMOJI_COMMENTED", "comment"),
+    emoji_review_started=os.environ.get("SLAPR_EMOJI_REVIEW_STARTED", ""),
+    emoji_approved=os.environ.get("SLAPR_EMOJI_APPROVED", ""),
+    emoji_needs_change=os.environ.get("SLAPR_EMOJI_CHANGES_REQUESTED", ""),
+    emoji_merged=os.environ.get("SLAPR_EMOJI_MERGED", ""),
+    emoji_closed=os.environ.get("SLAPR_EMOJI_CLOSED", ""),
+    emoji_commented=os.environ.get("SLAPR_EMOJI_COMMENTED", ""),
     review_map=review_map,
 )
 

@@ -8,7 +8,7 @@ inputs:
     description: 'Slack bot OAuth token'
     required: true
   slack-channel-id:
-    description: 'Default Slack channel ID for emoji reactions'
+    description: 'Slack channel ID(s) for emoji reactions. Comma-separated for multiple channels.'
     required: true
   bot-user-id:
     description: 'Slack user ID of the slapr bot'
@@ -21,29 +21,23 @@ inputs:
     required: false
     default: '1'
   emoji-review-started:
-    description: 'Emoji name for review started'
+    description: 'Emoji name for review started. Leave unset or empty to disable.'
     required: false
-    default: 'review_started'
   emoji-approved:
-    description: 'Emoji name for approved'
+    description: 'Emoji name for approved. Leave unset or empty to disable.'
     required: false
-    default: 'approved'
   emoji-changes-requested:
-    description: 'Emoji name for changes requested'
+    description: 'Emoji name for changes requested. Leave unset or empty to disable.'
     required: false
-    default: 'changes_requested'
   emoji-merged:
-    description: 'Emoji name for merged'
+    description: 'Emoji name for merged. Leave unset or empty to disable.'
     required: false
-    default: 'merged'
   emoji-closed:
-    description: 'Emoji name for closed'
+    description: 'Emoji name for closed. Leave unset or empty to disable.'
     required: false
-    default: 'closed'
   emoji-commented:
-    description: 'Emoji name for comment-only review'
+    description: 'Emoji name for comment-only review. Leave unset or empty to disable.'
     required: false
-    default: 'comment'
 runs:
   using: 'docker'
   image: 'Dockerfile'

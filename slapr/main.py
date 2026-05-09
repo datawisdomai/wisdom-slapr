@@ -39,7 +39,7 @@ def main(config: Config) -> None:
         target_channels = _resolve_target_channels(config, requested_teams, pr, reviewer)
     else:
         requested_teams = []
-        target_channels = {config.slack_channel_id: []}
+        target_channels = {ch: [] for ch in config.slack_channel_ids}
 
     for channel_id, teams in target_channels.items():
 
@@ -50,20 +50,30 @@ def main(config: Config) -> None:
             number_of_approvals_required=config.number_of_approvals_required,
         )
 
-        new_emojis = set() if pr.state == "closed" else {config.emoji_review_started}
+        new_emojis: Set[str] = set()
+        if pr.state != "closed" and config.emoji_review_started:
+            new_emojis.add(config.emoji_review_started)
         if review_emoji:
             new_emojis.add(review_emoji)
 
         if pr.merged:
-            new_emojis.add(config.emoji_merged)
+            if config.emoji_merged:
+                new_emojis.add(config.emoji_merged)
         elif pr.state == "closed":
-            new_emojis.add(config.emoji_closed)
+            if config.emoji_closed:
+                new_emojis.add(config.emoji_closed)
 
         _apply_emojis_to_channel(config, slack, new_emojis, pr_url, channel_id)
 
     # Broadcast review_started to ALL requested team channels, not just the reviewer's.
     # Only on the first review (len==1) — subsequent reviews already have review_started.
-    if config.review_map is not None and not pr.merged and pr.state != "closed" and len(reviews) == 1:
+    if (
+        config.review_map is not None
+        and not pr.merged
+        and pr.state != "closed"
+        and len(reviews) == 1
+        and config.emoji_review_started
+    ):
         all_channels = config.review_map.get_channels_for_requested_teams(requested_teams)
         already_processed = set(target_channels.keys())
         for channel_id in all_channels - already_processed:
@@ -91,12 +101,15 @@ def _resolve_target_channels(
     print(f"Reviewer: {reviewer.login if reviewer else None}")
     print(f"Requested teams (from timeline): {', '.join(t.slug for t in requested_teams)}")
 
+    default_channel_id = config.slack_channel_ids[0] if config.slack_channel_ids else None
     target_channels = defaultdict(list)
     for team in requested_teams:
         full_team = f"@{team.organization.login}/{team.slug}".lower()
         if full_team not in review_map.team_to_channel:
             print(f"  Team {full_team}: not in review map, use default")
-        channel_id = review_map.team_to_channel.get(full_team, config.slack_channel_id)
+        channel_id = review_map.team_to_channel.get(full_team, default_channel_id)
+        if channel_id is None:
+            continue
         if pr.state == "closed":
             target_channels[channel_id].append(team)
         else:
@@ -107,8 +120,10 @@ def _resolve_target_channels(
 
     if target_channels:
         return target_channels
-    print(f"No team match, falling back to default channel {config.slack_channel_id}")
-    return {config.slack_channel_id: []}
+    if default_channel_id:
+        print(f"No team match, falling back to default channel {default_channel_id}")
+        return {default_channel_id: []}
+    return {}
 
 
 def _apply_emojis_to_channel(

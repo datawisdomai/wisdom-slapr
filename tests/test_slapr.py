@@ -239,7 +239,7 @@ def test_on_pull_request_review(
     config = Config(
         slack_client=SlackClient(backend=slack_backend),
         github_client=GithubClient(backend=github_backend),
-        slack_channel_id="C1234",
+        slack_channel_ids=["C1234"],
         slapr_bot_user_id="U1234",
         number_of_approvals_required=1,
         emoji_review_started="test_review_started",
@@ -293,7 +293,7 @@ def test_on_pull_request(event: dict, pr: PullRequest, reactions: List[Reaction]
     config = Config(
         slack_client=SlackClient(backend=slack_backend),
         github_client=GithubClient(backend=github_backend),
-        slack_channel_id="C1234",
+        slack_channel_ids=["C1234"],
         slapr_bot_user_id="U1234",
         number_of_approvals_required=1,
         emoji_review_started="test_review_started",
@@ -360,7 +360,7 @@ def test_review_with_review_map_routes_to_team_channel():
     config = Config(
         slack_client=SlackClient(backend=slack_backend),
         github_client=GithubClient(backend=github_backend),
-        slack_channel_id="C_DEFAULT",
+        slack_channel_ids=["C_DEFAULT"],
         slapr_bot_user_id="U1234",
         number_of_approvals_required=1,
         emoji_review_started="test_review_started",
@@ -411,7 +411,7 @@ def test_review_with_review_map_falls_back_to_default():
     config = Config(
         slack_client=SlackClient(backend=slack_backend),
         github_client=GithubClient(backend=github_backend),
-        slack_channel_id="C_DEFAULT",
+        slack_channel_ids=["C_DEFAULT"],
         slapr_bot_user_id="U1234",
         number_of_approvals_required=1,
         emoji_review_started="test_review_started",
@@ -455,7 +455,7 @@ def test_merge_with_review_map_targets_requested_team_channels():
     config = Config(
         slack_client=SlackClient(backend=slack_backend),
         github_client=GithubClient(backend=github_backend),
-        slack_channel_id="C_DEFAULT",
+        slack_channel_ids=["C_DEFAULT"],
         slapr_bot_user_id="U1234",
         number_of_approvals_required=1,
         emoji_review_started="test_review_started",
@@ -511,7 +511,7 @@ def test_review_map_uses_reviewer_state_only():
     config = Config(
         slack_client=SlackClient(backend=slack_backend),
         github_client=GithubClient(backend=github_backend),
-        slack_channel_id="C_DEFAULT",
+        slack_channel_ids=["C_DEFAULT"],
         slapr_bot_user_id="U1234",
         number_of_approvals_required=1,
         emoji_review_started="test_review_started",
@@ -569,7 +569,7 @@ def test_review_started_broadcast_to_all_requested_team_channels():
     config = Config(
         slack_client=SlackClient(backend=slack_backend),
         github_client=GithubClient(backend=github_backend),
-        slack_channel_id="C_DEFAULT",
+        slack_channel_ids=["C_DEFAULT"],
         slapr_bot_user_id="U1234",
         number_of_approvals_required=1,
         emoji_review_started="test_review_started",
@@ -586,3 +586,117 @@ def test_review_started_broadcast_to_all_requested_team_channels():
     assert slack_backend.channel_emojis["C_APM"] == ["test_review_started", "test_approved"]
     # agent-build was also requested: should get review_started even though alice is not a member
     assert slack_backend.channel_emojis["C_BUILD"] == ["test_review_started"]
+
+
+# --- Multi-channel + empty-emoji-disable tests ---
+
+
+def test_multi_channel_ids_post_to_each():
+    """Without a review map, each channel in slack_channel_ids gets the same emojis."""
+    messages = [Message(text="Need review <https://github.com/example/repo/pull/42>", timestamp="ts")]
+
+    slack_backend = MockSlackBackend(
+        messages=[],
+        target_message=messages[0],
+        reactions=[],
+        channel_messages={"C_ONE": messages, "C_TWO": messages},
+        channel_reactions={"C_ONE": [], "C_TWO": []},
+    )
+    github_backend = MockGithubBackend(
+        reviews=[Review(state="approved", user=_user("alice"))],
+        event=MOCK_EVENT,
+        pr=PullRequest(state="open", merged=False, mergeable_state="clean"),
+    )
+
+    config = Config(
+        slack_client=SlackClient(backend=slack_backend),
+        github_client=GithubClient(backend=github_backend),
+        slack_channel_ids=["C_ONE", "C_TWO"],
+        slapr_bot_user_id="U1234",
+        number_of_approvals_required=1,
+        emoji_review_started="test_review_started",
+        emoji_approved="test_approved",
+        emoji_needs_change="test_needs_change",
+        emoji_merged="test_merged",
+        emoji_closed="test_closed",
+        emoji_commented="test_commented",
+    )
+    slapr.main(config)
+
+    assert slack_backend.channel_emojis["C_ONE"] == ["test_review_started", "test_approved"]
+    assert slack_backend.channel_emojis["C_TWO"] == ["test_review_started", "test_approved"]
+
+
+@pytest.mark.parametrize(
+    "emoji_overrides, reviews, pr, expected_emojis",
+    [
+        pytest.param(
+            {"emoji_review_started": ""},
+            [Review(state="approved", user=_user("alice"))],
+            PullRequest(state="open", merged=False, mergeable_state="clean"),
+            ["test_approved"],
+            id="empty-review-started-skipped",
+        ),
+        pytest.param(
+            {"emoji_approved": ""},
+            [Review(state="approved", user=_user("alice"))],
+            PullRequest(state="open", merged=False, mergeable_state="clean"),
+            ["test_review_started"],
+            id="empty-approved-skipped",
+        ),
+        pytest.param(
+            {"emoji_needs_change": ""},
+            [Review(state="changes_requested", user=_user("alice"))],
+            PullRequest(state="open", merged=False, mergeable_state="clean"),
+            ["test_review_started"],
+            id="empty-needs-change-skipped",
+        ),
+        pytest.param(
+            {"emoji_commented": ""},
+            [Review(state="commented", user=_user("alice"))],
+            PullRequest(state="open", merged=False, mergeable_state="clean"),
+            ["test_review_started"],
+            id="empty-commented-skipped",
+        ),
+        pytest.param(
+            {"emoji_merged": ""},
+            [Review(state="approved", user=_user("alice"))],
+            PullRequest(state="closed", merged=True, mergeable_state="clean"),
+            ["test_approved"],
+            id="empty-merged-skipped",
+        ),
+        pytest.param(
+            {"emoji_closed": ""},
+            [Review(state="approved", user=_user("alice"))],
+            PullRequest(state="closed", merged=False, mergeable_state="clean"),
+            ["test_approved"],
+            id="empty-closed-skipped",
+        ),
+    ],
+)
+def test_empty_emoji_is_skipped(emoji_overrides, reviews, pr, expected_emojis):
+    messages = [Message(text="Need review <https://github.com/example/repo/pull/42>", timestamp="ts")]
+    slack_backend = MockSlackBackend(messages=messages, target_message=messages[0], reactions=[])
+    github_backend = MockGithubBackend(reviews=reviews, event=MOCK_EVENT, pr=pr)
+
+    base_emojis = {
+        "emoji_review_started": "test_review_started",
+        "emoji_approved": "test_approved",
+        "emoji_needs_change": "test_needs_change",
+        "emoji_merged": "test_merged",
+        "emoji_closed": "test_closed",
+        "emoji_commented": "test_commented",
+    }
+    base_emojis.update(emoji_overrides)
+
+    config = Config(
+        slack_client=SlackClient(backend=slack_backend),
+        github_client=GithubClient(backend=github_backend),
+        slack_channel_ids=["C1234"],
+        slapr_bot_user_id="U1234",
+        number_of_approvals_required=1,
+        **base_emojis,
+    )
+    slapr.main(config)
+
+    assert sorted(slack_backend.emojis) == sorted(expected_emojis)

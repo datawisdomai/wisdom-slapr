@@ -36,14 +36,18 @@ def select(
     last_reviews = [reviews[-1] for reviews in reviews_by_author.values() if reviews]
     unique_states = {review.state for review in last_reviews}
 
-    if "changes_requested" in unique_states:
+    if "changes_requested" in unique_states and config.emoji_needs_change:
         return config.emoji_needs_change
 
     approval_count = len([review.state for review in last_reviews if review.state == "approved"])
-    if ("approved" in unique_states) and approval_count >= number_of_approvals_required:
+    if (
+        "approved" in unique_states
+        and approval_count >= number_of_approvals_required
+        and config.emoji_approved
+    ):
         return config.emoji_approved
 
-    if "commented" in unique_states:
+    if "commented" in unique_states and config.emoji_commented:
         return config.emoji_commented
 
     return None

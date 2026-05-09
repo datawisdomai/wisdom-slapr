@@ -3,7 +3,7 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/)
 # Copyright 2023-present Datadog, Inc.
 
-from typing import Callable, NamedTuple, Optional
+from typing import Callable, List, NamedTuple, Optional
 
 from .github import GithubClient
 from .review_map import ReviewMap
@@ -14,7 +14,7 @@ class Config(NamedTuple):
     slack_client: SlackClient
     github_client: GithubClient
 
-    slack_channel_id: str
+    slack_channel_ids: List[str]
     slapr_bot_user_id: str  # TODO: document how to obtain this user ID, or automate its retrieval.
 
     number_of_approvals_required: int
@@ -43,4 +43,8 @@ class Config(NamedTuple):
             self.emoji_merged,
         ]
 
-        return lambda emoji: review_steps_as_emojis.index(emoji)
+        return lambda emoji: (
+            review_steps_as_emojis.index(emoji)
+            if emoji in review_steps_as_emojis
+            else len(review_steps_as_emojis)
+        )
