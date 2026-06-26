@@ -4,7 +4,7 @@
 # Copyright 2023-present Datadog, Inc.
 
 from collections import defaultdict
-from typing import Dict, List, Set
+from typing import Dict, List, NamedTuple, Optional, Set
 
 from . import emojis
 from .config import Config
@@ -12,31 +12,55 @@ from .github import GithubClient, PullRequest
 from .slack import SlackClient
 
 
+class PullRequestEventContext(NamedTuple):
+    pr_number: int
+    action: str
+    reviewer_login: Optional[str]
+    is_status_update: bool
+
+
 def main(config: Config) -> None:
     slack = config.slack_client
     github = config.github_client
 
     event = github.read_event()
+    context = _get_pull_request_context(event)
+    if context is None:
+        print("Event does not reference a pull request.")
+        return
 
-    is_fork: bool = event["pull_request"]["head"]["repo"]["fork"]
+    pr = github.get_pr(pr_number=context.pr_number)
+
+    event_pull_request = event.get("pull_request", {})
+    is_fork = _is_external_fork_pr(pr, event_pull_request)
 
     if is_fork:
         print("Fork PRs are not supported.")
         return
 
-    pr_number: int = event["pull_request"]["number"]
-    pr = github.get_pr(pr_number=pr_number)
-    reviews = github.get_pr_reviews(pr_number=pr_number)
-    pr_url: str = event["pull_request"]["html_url"]
-    print(f"Event PR: {pr_url} - Is merged: {pr.merged}")
+    reviews = github.get_pr_reviews(pr_number=context.pr_number)
+    pr_url: str = pr.url or event_pull_request.get("html_url", "")
+    ci_status = (
+        github.get_pr_ci_status(pr, ignored_check_names=config.ignored_ci_check_names)
+        if config.has_ci_status_emojis
+        else ""
+    )
+    print(f"Event PR: {pr_url} - state: {pr.state} - merged: {pr.merged} - CI: {ci_status or 'disabled'}")
 
     # Determine target channels (with optional team slug for filtering)
     if config.review_map is not None:
-        org_name: str = event["pull_request"]["head"]["repo"]["owner"]["login"]
-        requested_teams = github.get_all_requested_teams(org_name, pr_number)
-        reviewer_login = event.get("review", {}).get("user", {}).get("login")
+        event_head_repo = event_pull_request.get("head", {}).get("repo", {})
+        org_name = pr.head_owner_login or event_head_repo.get("owner", {}).get("login")
+        requested_teams = github.get_all_requested_teams(org_name, context.pr_number)
+        reviewer_login = context.reviewer_login
         reviewer = github.get_user(reviewer_login) if reviewer_login else None
-        target_channels = _resolve_target_channels(config, requested_teams, pr, reviewer)
+        target_channels = _resolve_target_channels(
+            config,
+            requested_teams,
+            pr,
+            reviewer,
+            target_all_requested_channels=context.is_status_update,
+        )
     else:
         requested_teams = []
         target_channels = {ch: [] for ch in config.slack_channel_ids}
@@ -51,17 +75,18 @@ def main(config: Config) -> None:
         )
 
         new_emojis: Set[str] = set()
-        if pr.state != "closed" and config.emoji_review_started:
+        if pr.state != "closed" and reviews and config.emoji_review_started:
             new_emojis.add(config.emoji_review_started)
         if review_emoji:
             new_emojis.add(review_emoji)
 
-        if pr.merged:
-            if config.emoji_merged:
-                new_emojis.add(config.emoji_merged)
-        elif pr.state == "closed":
-            if config.emoji_closed:
-                new_emojis.add(config.emoji_closed)
+        pr_state_emoji = emojis.select_pr_state(pr, config, event_action=context.action)
+        if pr_state_emoji:
+            new_emojis.add(pr_state_emoji)
+
+        ci_status_emoji = emojis.select_ci_status(ci_status, config)
+        if ci_status_emoji:
+            new_emojis.add(ci_status_emoji)
 
         _apply_emojis_to_channel(config, slack, new_emojis, pr_url, channel_id)
 
@@ -73,6 +98,7 @@ def main(config: Config) -> None:
         and pr.state != "closed"
         and len(reviews) == 1
         and config.emoji_review_started
+        and not context.is_status_update
     ):
         all_channels = config.review_map.get_channels_for_requested_teams(requested_teams)
         already_processed = set(target_channels.keys())
@@ -83,8 +109,48 @@ def main(config: Config) -> None:
             )
 
 
+def _get_pull_request_context(event: dict) -> Optional[PullRequestEventContext]:
+    pull_request = event.get("pull_request")
+    if pull_request is not None:
+        return PullRequestEventContext(
+            pr_number=pull_request["number"],
+            action=event.get("action", ""),
+            reviewer_login=event.get("review", {}).get("user", {}).get("login"),
+            is_status_update=False,
+        )
+
+    workflow_run = event.get("workflow_run")
+    if workflow_run is not None:
+        pull_requests = workflow_run.get("pull_requests", [])
+        if not pull_requests:
+            return None
+        return PullRequestEventContext(
+            pr_number=pull_requests[0]["number"],
+            action=event.get("action", ""),
+            reviewer_login=None,
+            is_status_update=True,
+        )
+
+    return None
+
+
+def _is_external_fork_pr(pr: PullRequest, event_pull_request: dict) -> bool:
+    event_head_repo = event_pull_request.get("head", {}).get("repo", {})
+    event_base_repo = event_pull_request.get("base", {}).get("repo", {})
+    head_repo_full_name = pr.head_repo_full_name or event_head_repo.get("full_name", "")
+    base_repo_full_name = pr.base_repo_full_name or event_base_repo.get("full_name", "")
+
+    if head_repo_full_name and base_repo_full_name:
+        return head_repo_full_name.lower() != base_repo_full_name.lower()
+    return pr.head_repo_fork or event_head_repo.get("fork", False)
+
+
 def _resolve_target_channels(
-    config: Config, requested_teams: List, pr: PullRequest, reviewer
+    config: Config,
+    requested_teams: List,
+    pr: PullRequest,
+    reviewer,
+    target_all_requested_channels: bool = False,
 ) -> Dict[str, List]:
     """Determine which Slack channels to target based on the review map.
 
@@ -110,7 +176,7 @@ def _resolve_target_channels(
         channel_id = review_map.team_to_channel.get(full_team, default_channel_id)
         if channel_id is None:
             continue
-        if pr.state == "closed":
+        if pr.state == "closed" or target_all_requested_channels:
             target_channels[channel_id].append(team)
         else:
             is_member = reviewer and team.has_in_members(reviewer)

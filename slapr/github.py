@@ -4,9 +4,20 @@
 # Copyright 2023-present Datadog, Inc.
 
 import json
-from typing import List, NamedTuple
+from typing import List, NamedTuple, Optional, Tuple
 
 from github import Github
+
+CI_STATUS_UNKNOWN = "unknown"
+CI_STATUS_RUNNING = "running"
+CI_STATUS_FAILING = "failing"
+CI_STATUS_PASSING = "passing"
+
+FAILING_CHECK_CONCLUSIONS = {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}
+PASSING_CHECK_CONCLUSIONS = {"neutral", "skipped", "success"}
+FAILING_COMMIT_STATUS_STATES = {"error", "failure"}
+RUNNING_COMMIT_STATUS_STATES = {"pending"}
+PASSING_COMMIT_STATUS_STATES = {"success"}
 
 
 class Review(NamedTuple):
@@ -18,6 +29,58 @@ class PullRequest(NamedTuple):
     state: str
     merged: bool
     mergeable_state: str
+    url: str = ""
+    draft: bool = False
+    head_sha: str = ""
+    head_repo_fork: bool = False
+    head_owner_login: str = ""
+    head_repo_full_name: str = ""
+    base_repo_full_name: str = ""
+
+
+class PullRequestCheckRun(NamedTuple):
+    name: str
+    status: str
+    conclusion: Optional[str]
+
+
+def summarize_ci_status(
+    check_runs: List[PullRequestCheckRun],
+    combined_status_state: str,
+    combined_status_count: int = 0,
+    ignored_check_names: Tuple[str, ...] = (),
+) -> str:
+    ignored_check_names_set = set(ignored_check_names)
+    has_completed_passing_check = False
+    has_running_check = False
+
+    for check_run in check_runs:
+        if check_run.name in ignored_check_names_set:
+            continue
+
+        status = (check_run.status or "").lower()
+        conclusion = (check_run.conclusion or "").lower()
+
+        if status != "completed":
+            has_running_check = True
+            continue
+
+        if conclusion in FAILING_CHECK_CONCLUSIONS:
+            return CI_STATUS_FAILING
+        if conclusion in PASSING_CHECK_CONCLUSIONS:
+            has_completed_passing_check = True
+            continue
+        if conclusion:
+            return CI_STATUS_FAILING
+
+    combined_status_state = (combined_status_state or "").lower() if combined_status_count > 0 else ""
+    if combined_status_state in FAILING_COMMIT_STATUS_STATES:
+        return CI_STATUS_FAILING
+    if has_running_check or combined_status_state in RUNNING_COMMIT_STATUS_STATES:
+        return CI_STATUS_RUNNING
+    if has_completed_passing_check or combined_status_state in PASSING_COMMIT_STATUS_STATES:
+        return CI_STATUS_PASSING
+    return CI_STATUS_UNKNOWN
 
 
 class GithubBackend:
@@ -28,6 +91,9 @@ class GithubBackend:
         raise NotImplementedError  # pragma: no cover
 
     def get_pr(self, pr_number: int) -> PullRequest:
+        raise NotImplementedError  # pragma: no cover
+
+    def get_pr_ci_status(self, pr: PullRequest, ignored_check_names: Tuple[str, ...] = ()) -> str:
         raise NotImplementedError  # pragma: no cover
 
     def get_organization(self, org: str):
@@ -56,7 +122,32 @@ class WebGithubBackend(GithubBackend):
 
     def get_pr(self, pr_number: int) -> PullRequest:
         pr = self._gh.get_repo(self.repo).get_pull(pr_number)
-        return PullRequest(state=pr.state, merged=pr.merged, mergeable_state=pr.mergeable_state)
+        return PullRequest(
+            state=pr.state,
+            merged=pr.merged,
+            mergeable_state=pr.mergeable_state or "",
+            url=pr.html_url,
+            draft=pr.draft,
+            head_sha=pr.head.sha,
+            head_repo_fork=pr.head.repo.fork,
+            head_owner_login=pr.head.repo.owner.login,
+            head_repo_full_name=pr.head.repo.full_name,
+            base_repo_full_name=pr.base.repo.full_name,
+        )
+
+    def get_pr_ci_status(self, pr: PullRequest, ignored_check_names: Tuple[str, ...] = ()) -> str:
+        if not pr.head_sha:
+            return CI_STATUS_UNKNOWN
+
+        commit = self._gh.get_repo(self.repo).get_commit(pr.head_sha)
+        check_runs = [
+            PullRequestCheckRun(name=check_run.name, status=check_run.status or "", conclusion=check_run.conclusion)
+            for check_run in commit.get_check_runs()
+        ]
+        combined_status = commit.get_combined_status()
+        return summarize_ci_status(
+            check_runs, combined_status.state, combined_status.total_count or 0, ignored_check_names
+        )
 
     def get_organization(self, org: str):
         return self._gh.get_organization(org)
@@ -89,6 +180,9 @@ class GithubClient:
 
     def get_pr(self, pr_number: int) -> PullRequest:
         return self._backend.get_pr(pr_number)
+
+    def get_pr_ci_status(self, pr: PullRequest, ignored_check_names: Tuple[str, ...] = ()) -> str:
+        return self._backend.get_pr_ci_status(pr, ignored_check_names)
 
     def get_organization(self, org: str):
         return self._backend.get_organization(org)

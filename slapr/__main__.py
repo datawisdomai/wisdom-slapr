@@ -30,6 +30,9 @@ if review_map_path:
         default_channel_id=slack_channel_ids[0] if slack_channel_ids else "",
     )
 
+ignored_ci_check_names_env = os.environ.get("SLAPR_IGNORE_CI_CHECK_NAMES") or os.environ.get("GITHUB_JOB", "")
+ignored_ci_check_names = tuple(name.strip() for name in ignored_ci_check_names_env.split(",") if name.strip())
+
 config = Config(
     slack_client=slack_client,
     github_client=GithubClient(
@@ -49,6 +52,13 @@ config = Config(
     emoji_closed=os.environ.get("SLAPR_EMOJI_CLOSED", ""),
     emoji_commented=os.environ.get("SLAPR_EMOJI_COMMENTED", ""),
     review_map=review_map,
+    emoji_open=os.environ.get("SLAPR_EMOJI_OPEN", ""),
+    emoji_draft=os.environ.get("SLAPR_EMOJI_DRAFT", ""),
+    emoji_queue=os.environ.get("SLAPR_EMOJI_QUEUE", ""),
+    emoji_ci_running=os.environ.get("SLAPR_EMOJI_CI_RUNNING", ""),
+    emoji_ci_failing=os.environ.get("SLAPR_EMOJI_CI_FAILING", ""),
+    emoji_ci_passing=os.environ.get("SLAPR_EMOJI_CI_PASSING", ""),
+    ignored_ci_check_names=ignored_ci_check_names,
 )
 
 main(config)

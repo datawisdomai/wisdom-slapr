@@ -3,13 +3,22 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/)
 # Copyright 2023-present Datadog, Inc.
 
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 import pytest
 
 import slapr
 from slapr.config import Config
-from slapr.github import GithubBackend, GithubClient, PullRequest, Review
+from slapr.github import (
+    CI_STATUS_FAILING,
+    CI_STATUS_PASSING,
+    CI_STATUS_RUNNING,
+    CI_STATUS_UNKNOWN,
+    GithubBackend,
+    GithubClient,
+    PullRequest,
+    Review,
+)
 from slapr.review_map import ReviewMap
 from slapr.slack import Message, Reaction, SlackBackend, SlackClient
 
@@ -111,10 +120,13 @@ class MockGithubBackend(GithubBackend):
         pr: PullRequest,
         team_members: Optional[Dict[str, List[str]]] = None,
         requested_teams_timeline: Optional[List[str]] = None,
+        ci_status: str = CI_STATUS_UNKNOWN,
     ) -> None:
         self.reviews = reviews
         self.event = event
         self.pr = pr
+        self.pr_number = _event_pr_number(event)
+        self.ci_status = ci_status
         # team_members: {"team-slug": ["user1", "user2"]}
         self.team_members = team_members or {}
         # requested_teams_timeline: list of team slugs from timeline API
@@ -124,12 +136,16 @@ class MockGithubBackend(GithubBackend):
         return self.event
 
     def get_pr(self, pr_number: int) -> PullRequest:
-        assert pr_number == self.event["pull_request"]["number"]
+        assert pr_number == self.pr_number
         return self.pr
 
     def get_pr_reviews(self, pr_number: int) -> List[Review]:
-        assert pr_number == self.event["pull_request"]["number"]
+        assert pr_number == self.pr_number
         return list(self.reviews)
+
+    def get_pr_ci_status(self, pr: PullRequest, ignored_check_names: Tuple[str, ...] = ()) -> str:
+        assert pr == self.pr
+        return self.ci_status
 
     def get_organization(self, org: str):
         teams = {
@@ -157,6 +173,12 @@ def _user(login: str) -> MockUser:
     return MockUser(login)
 
 
+def _event_pr_number(event: dict) -> int:
+    if "pull_request" in event:
+        return event["pull_request"]["number"]
+    return event["workflow_run"]["pull_requests"][0]["number"]
+
+
 # --- Test data ---
 
 
@@ -168,6 +190,17 @@ MOCK_EVENT = {
     },
     "review": {
         "user": {"login": "alice"},
+    },
+}
+
+MOCK_WORKFLOW_RUN_EVENT = {
+    "action": "completed",
+    "workflow_run": {
+        "pull_requests": [
+            {
+                "number": 42,
+            }
+        ],
     },
 }
 
@@ -306,6 +339,226 @@ def test_on_pull_request(event: dict, pr: PullRequest, reactions: List[Reaction]
     slapr.main(config)
 
     assert slack_backend.emojis == expected_emojis
+
+
+@pytest.mark.parametrize(
+    "pr, event_action, existing_reactions, expected_emojis",
+    [
+        pytest.param(
+            PullRequest(state="open", merged=False, mergeable_state="clean"),
+            "",
+            [Reaction(emoji="test_draft", user_ids=["U1234"])],
+            ["test_open"],
+            id="open",
+        ),
+        pytest.param(
+            PullRequest(state="open", merged=False, mergeable_state="clean", draft=True),
+            "",
+            [Reaction(emoji="test_open", user_ids=["U1234"])],
+            ["test_draft"],
+            id="draft",
+        ),
+        pytest.param(
+            PullRequest(state="open", merged=False, mergeable_state="clean"),
+            "enqueued",
+            [Reaction(emoji="test_open", user_ids=["U1234"])],
+            ["test_queue"],
+            id="queued",
+        ),
+        pytest.param(
+            PullRequest(state="closed", merged=True, mergeable_state="clean"),
+            "",
+            [Reaction(emoji="test_open", user_ids=["U1234"])],
+            ["test_merged"],
+            id="merged",
+        ),
+        pytest.param(
+            PullRequest(state="closed", merged=False, mergeable_state="clean"),
+            "",
+            [Reaction(emoji="test_open", user_ids=["U1234"])],
+            ["test_closed"],
+            id="closed",
+        ),
+    ],
+)
+def test_pr_state_emoji_replaces_previous_state(
+    pr: PullRequest,
+    event_action: str,
+    existing_reactions: List[Reaction],
+    expected_emojis: List[str],
+) -> None:
+    messages = [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")]
+
+    slack_backend = MockSlackBackend(messages=messages, target_message=messages[0], reactions=existing_reactions)
+    github_backend = MockGithubBackend(
+        reviews=[],
+        event={**MOCK_EVENT, "action": event_action},
+        pr=pr,
+    )
+
+    config = Config(
+        slack_client=SlackClient(backend=slack_backend),
+        github_client=GithubClient(backend=github_backend),
+        slack_channel_ids=["C1234"],
+        slapr_bot_user_id="U1234",
+        number_of_approvals_required=1,
+        emoji_review_started="test_review_started",
+        emoji_approved="test_approved",
+        emoji_needs_change="test_needs_change",
+        emoji_merged="test_merged",
+        emoji_closed="test_closed",
+        emoji_commented="test_commented",
+        emoji_open="test_open",
+        emoji_draft="test_draft",
+        emoji_queue="test_queue",
+    )
+    slapr.main(config)
+
+    assert slack_backend.emojis == expected_emojis
+
+
+@pytest.mark.parametrize(
+    "ci_status, existing_reaction, expected_emojis",
+    [
+        pytest.param(CI_STATUS_RUNNING, "test_ci_failing", ["test_ci_running"], id="running"),
+        pytest.param(CI_STATUS_FAILING, "test_ci_running", ["test_ci_failing"], id="failing"),
+        pytest.param(CI_STATUS_PASSING, "test_ci_running", ["test_ci_passing"], id="passing"),
+        pytest.param(CI_STATUS_UNKNOWN, "test_ci_running", [], id="unknown"),
+    ],
+)
+def test_ci_status_emoji(ci_status: str, existing_reaction: str, expected_emojis: List[str]) -> None:
+    messages = [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")]
+
+    slack_backend = MockSlackBackend(
+        messages=messages,
+        target_message=messages[0],
+        reactions=[Reaction(emoji=existing_reaction, user_ids=["U1234"])],
+    )
+    github_backend = MockGithubBackend(
+        reviews=[],
+        event=MOCK_EVENT,
+        pr=PullRequest(state="open", merged=False, mergeable_state="clean"),
+        ci_status=ci_status,
+    )
+
+    config = Config(
+        slack_client=SlackClient(backend=slack_backend),
+        github_client=GithubClient(backend=github_backend),
+        slack_channel_ids=["C1234"],
+        slapr_bot_user_id="U1234",
+        number_of_approvals_required=1,
+        emoji_review_started="test_review_started",
+        emoji_approved="test_approved",
+        emoji_needs_change="test_needs_change",
+        emoji_merged="test_merged",
+        emoji_closed="test_closed",
+        emoji_commented="test_commented",
+        emoji_ci_running="test_ci_running",
+        emoji_ci_failing="test_ci_failing",
+        emoji_ci_passing="test_ci_passing",
+    )
+    slapr.main(config)
+
+    assert slack_backend.emojis == expected_emojis
+
+
+def test_on_workflow_run_updates_pr_and_ci_status_emojis() -> None:
+    messages = [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")]
+
+    slack_backend = MockSlackBackend(
+        messages=messages,
+        target_message=messages[0],
+        reactions=[Reaction(emoji="test_ci_failing", user_ids=["U1234"])],
+    )
+    github_backend = MockGithubBackend(
+        reviews=[],
+        event=MOCK_WORKFLOW_RUN_EVENT,
+        pr=PullRequest(
+            state="open",
+            merged=False,
+            mergeable_state="clean",
+            url="https://github.com/example/repo/pull/42",
+            head_repo_fork=True,
+            head_owner_login="datadog",
+            head_repo_full_name="example/repo",
+            base_repo_full_name="example/repo",
+        ),
+        ci_status=CI_STATUS_RUNNING,
+    )
+
+    config = Config(
+        slack_client=SlackClient(backend=slack_backend),
+        github_client=GithubClient(backend=github_backend),
+        slack_channel_ids=["C1234"],
+        slapr_bot_user_id="U1234",
+        number_of_approvals_required=1,
+        emoji_review_started="test_review_started",
+        emoji_approved="test_approved",
+        emoji_needs_change="test_needs_change",
+        emoji_merged="test_merged",
+        emoji_closed="test_closed",
+        emoji_commented="test_commented",
+        emoji_open="test_open",
+        emoji_draft="test_draft",
+        emoji_queue="test_queue",
+        emoji_ci_running="test_ci_running",
+        emoji_ci_failing="test_ci_failing",
+        emoji_ci_passing="test_ci_passing",
+    )
+    slapr.main(config)
+
+    assert slack_backend.emojis == ["test_open", "test_ci_running"]
+
+
+def test_external_fork_pr_is_skipped() -> None:
+    event = {
+        "pull_request": {
+            "number": 42,
+            "html_url": "https://github.com/example/repo/pull/42",
+            "head": {
+                "repo": {
+                    "fork": True,
+                    "full_name": "someone/repo",
+                    "owner": {"login": "someone"},
+                }
+            },
+            "base": {"repo": {"full_name": "example/repo"}},
+        },
+    }
+    messages = [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")]
+
+    slack_backend = MockSlackBackend(messages=messages, target_message=messages[0], reactions=[])
+    github_backend = MockGithubBackend(
+        reviews=[],
+        event=event,
+        pr=PullRequest(
+            state="open",
+            merged=False,
+            mergeable_state="clean",
+            url="https://github.com/example/repo/pull/42",
+            head_repo_fork=True,
+            head_repo_full_name="someone/repo",
+            base_repo_full_name="example/repo",
+        ),
+    )
+
+    config = Config(
+        slack_client=SlackClient(backend=slack_backend),
+        github_client=GithubClient(backend=github_backend),
+        slack_channel_ids=["C1234"],
+        slapr_bot_user_id="U1234",
+        number_of_approvals_required=1,
+        emoji_review_started="test_review_started",
+        emoji_approved="test_approved",
+        emoji_needs_change="test_needs_change",
+        emoji_merged="test_merged",
+        emoji_closed="test_closed",
+        emoji_commented="test_commented",
+        emoji_open="test_open",
+    )
+    slapr.main(config)
+
+    assert slack_backend.emojis == []
 
 
 # --- Review Map integration tests ---

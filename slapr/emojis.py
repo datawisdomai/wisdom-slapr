@@ -6,7 +6,7 @@
 import itertools
 from typing import List, Optional, Set, Tuple
 
-from .github import Review
+from .github import CI_STATUS_FAILING, CI_STATUS_PASSING, CI_STATUS_RUNNING, PullRequest, Review
 from .config import Config
 
 
@@ -50,6 +50,34 @@ def select(
     if "commented" in unique_states and config.emoji_commented:
         return config.emoji_commented
 
+    return None
+
+
+def select_pr_state(pr: PullRequest, config: Config, event_action: str = "") -> Optional[str]:
+    pr_state = pr.state.lower()
+    mergeable_state = pr.mergeable_state.lower()
+    event_action = event_action.lower()
+
+    if pr.merged:
+        return config.emoji_merged or None
+    if pr_state == "closed":
+        return config.emoji_closed or None
+    if pr.draft or mergeable_state == "draft":
+        return config.emoji_draft or None
+    if event_action == "enqueued" or mergeable_state in {"queue", "queued"}:
+        return config.emoji_queue or None
+    if pr_state == "open":
+        return config.emoji_open or None
+    return None
+
+
+def select_ci_status(ci_status: str, config: Config) -> Optional[str]:
+    if ci_status == CI_STATUS_RUNNING:
+        return config.emoji_ci_running or None
+    if ci_status == CI_STATUS_FAILING:
+        return config.emoji_ci_failing or None
+    if ci_status == CI_STATUS_PASSING:
+        return config.emoji_ci_passing or None
     return None
 
 
