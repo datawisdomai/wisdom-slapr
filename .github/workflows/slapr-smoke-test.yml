@@ -78,21 +78,24 @@ jobs:
             > "$GITHUB_WORKSPACE/.slapr-smoke-event.json"
           cat "$GITHUB_WORKSPACE/.slapr-smoke-event.json"
 
+      - name: Install Slapr
+        run: python -m pip install .
+
       - name: Run Slapr against test channel
-        uses: ./
         env:
-          GITHUB_EVENT_PATH: /github/workspace/.slapr-smoke-event.json
-        with:
-          github-token: ${{ github.token }}
-          slack-api-token: ${{ secrets.SLACK_TOKEN }}
-          slack-channel-id: ${{ inputs['slack-channel-id'] || 'C0952EA3Z1U' }}
-          bot-user-id: UTMS06TPX
-          emoji-open: ${{ inputs['emoji-open'] || 'open' }}
-          emoji-draft: ${{ inputs['emoji-draft'] || 'draft' }}
-          emoji-queue: ${{ inputs['emoji-queue'] || 'queue' }}
-          emoji-merged: ${{ inputs['emoji-merged'] || 'merged' }}
-          emoji-closed: ${{ inputs['emoji-closed'] || 'closed' }}
-          emoji-ci-running: ${{ inputs['emoji-ci-running'] || 'running' }}
-          emoji-ci-failing: ${{ inputs['emoji-ci-failing'] || 'failing' }}
-          emoji-ci-passing: ${{ inputs['emoji-ci-passing'] || 'passing' }}
-          ignore-ci-check-names: ${{ inputs['ignore-ci-check-names'] || 'run_slapr' }}
+          GITHUB_EVENT_PATH: ${{ github.workspace }}/.slapr-smoke-event.json
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SLACK_API_TOKEN: ${{ secrets.SLACK_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ inputs['slack-channel-id'] || 'C0952EA3Z1U' }}
+          SLAPR_BOT_USER_ID: UTMS06TPX
+          SLAPR_EMOJI_OPEN: ${{ inputs['emoji-open'] || 'open' }}
+          SLAPR_EMOJI_DRAFT: ${{ inputs['emoji-draft'] || 'draft' }}
+          SLAPR_EMOJI_QUEUE: ${{ inputs['emoji-queue'] || 'queue' }}
+          SLAPR_EMOJI_MERGED: ${{ inputs['emoji-merged'] || 'merged' }}
+          SLAPR_EMOJI_CLOSED: ${{ inputs['emoji-closed'] || 'closed' }}
+          SLAPR_EMOJI_CI_RUNNING: ${{ inputs['emoji-ci-running'] || 'running' }}
+          SLAPR_EMOJI_CI_FAILING: ${{ inputs['emoji-ci-failing'] || 'failing' }}
+          SLAPR_EMOJI_CI_PASSING: ${{ inputs['emoji-ci-passing'] || 'passing' }}
+          SLAPR_IGNORE_CI_CHECK_NAMES: ${{ inputs['ignore-ci-check-names'] || 'run_slapr' }}
+        run: python -m slapr
