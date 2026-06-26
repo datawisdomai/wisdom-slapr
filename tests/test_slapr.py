@@ -478,7 +478,10 @@ def test_on_workflow_run_updates_pr_and_ci_status_emojis() -> None:
             merged=False,
             mergeable_state="clean",
             url="https://github.com/example/repo/pull/42",
+            head_repo_fork=True,
             head_owner_login="datadog",
+            head_repo_full_name="example/repo",
+            base_repo_full_name="example/repo",
         ),
         ci_status=CI_STATUS_RUNNING,
     )
@@ -505,6 +508,57 @@ def test_on_workflow_run_updates_pr_and_ci_status_emojis() -> None:
     slapr.main(config)
 
     assert slack_backend.emojis == ["test_open", "test_ci_running"]
+
+
+def test_external_fork_pr_is_skipped() -> None:
+    event = {
+        "pull_request": {
+            "number": 42,
+            "html_url": "https://github.com/example/repo/pull/42",
+            "head": {
+                "repo": {
+                    "fork": True,
+                    "full_name": "someone/repo",
+                    "owner": {"login": "someone"},
+                }
+            },
+            "base": {"repo": {"full_name": "example/repo"}},
+        },
+    }
+    messages = [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")]
+
+    slack_backend = MockSlackBackend(messages=messages, target_message=messages[0], reactions=[])
+    github_backend = MockGithubBackend(
+        reviews=[],
+        event=event,
+        pr=PullRequest(
+            state="open",
+            merged=False,
+            mergeable_state="clean",
+            url="https://github.com/example/repo/pull/42",
+            head_repo_fork=True,
+            head_repo_full_name="someone/repo",
+            base_repo_full_name="example/repo",
+        ),
+    )
+
+    config = Config(
+        slack_client=SlackClient(backend=slack_backend),
+        github_client=GithubClient(backend=github_backend),
+        slack_channel_ids=["C1234"],
+        slapr_bot_user_id="U1234",
+        number_of_approvals_required=1,
+        emoji_review_started="test_review_started",
+        emoji_approved="test_approved",
+        emoji_needs_change="test_needs_change",
+        emoji_merged="test_merged",
+        emoji_closed="test_closed",
+        emoji_commented="test_commented",
+        emoji_open="test_open",
+    )
+    slapr.main(config)
+
+    assert slack_backend.emojis == []
 
 
 # --- Review Map integration tests ---

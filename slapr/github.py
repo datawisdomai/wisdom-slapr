@@ -34,6 +34,8 @@ class PullRequest(NamedTuple):
     head_sha: str = ""
     head_repo_fork: bool = False
     head_owner_login: str = ""
+    head_repo_full_name: str = ""
+    base_repo_full_name: str = ""
 
 
 class PullRequestCheckRun(NamedTuple):
@@ -129,6 +131,8 @@ class WebGithubBackend(GithubBackend):
             head_sha=pr.head.sha,
             head_repo_fork=pr.head.repo.fork,
             head_owner_login=pr.head.repo.owner.login,
+            head_repo_full_name=pr.head.repo.full_name,
+            base_repo_full_name=pr.base.repo.full_name,
         )
 
     def get_pr_ci_status(self, pr: PullRequest, ignored_check_names: Tuple[str, ...] = ()) -> str:

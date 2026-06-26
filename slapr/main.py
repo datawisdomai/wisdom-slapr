@@ -32,8 +32,7 @@ def main(config: Config) -> None:
     pr = github.get_pr(pr_number=context.pr_number)
 
     event_pull_request = event.get("pull_request", {})
-    event_head_repo = event_pull_request.get("head", {}).get("repo", {})
-    is_fork = pr.head_repo_fork or event_head_repo.get("fork", False)
+    is_fork = _is_external_fork_pr(pr, event_pull_request)
 
     if is_fork:
         print("Fork PRs are not supported.")
@@ -50,6 +49,7 @@ def main(config: Config) -> None:
 
     # Determine target channels (with optional team slug for filtering)
     if config.review_map is not None:
+        event_head_repo = event_pull_request.get("head", {}).get("repo", {})
         org_name = pr.head_owner_login or event_head_repo.get("owner", {}).get("login")
         requested_teams = github.get_all_requested_teams(org_name, context.pr_number)
         reviewer_login = context.reviewer_login
@@ -132,6 +132,17 @@ def _get_pull_request_context(event: dict) -> Optional[PullRequestEventContext]:
         )
 
     return None
+
+
+def _is_external_fork_pr(pr: PullRequest, event_pull_request: dict) -> bool:
+    event_head_repo = event_pull_request.get("head", {}).get("repo", {})
+    event_base_repo = event_pull_request.get("base", {}).get("repo", {})
+    head_repo_full_name = pr.head_repo_full_name or event_head_repo.get("full_name", "")
+    base_repo_full_name = pr.base_repo_full_name or event_base_repo.get("full_name", "")
+
+    if head_repo_full_name and base_repo_full_name:
+        return head_repo_full_name.lower() != base_repo_full_name.lower()
+    return pr.head_repo_fork or event_head_repo.get("fork", False)
 
 
 def _resolve_target_channels(
