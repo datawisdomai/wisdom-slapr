@@ -59,15 +59,15 @@ def select_pr_state(pr: PullRequest, config: Config, event_action: str = "") -> 
     event_action = event_action.lower()
 
     if pr.merged:
-        return config.emoji_pr_merged or config.emoji_merged or None
+        return config.emoji_merged or None
     if pr_state == "closed":
-        return config.emoji_pr_closed or config.emoji_closed or None
+        return config.emoji_closed or None
     if pr.draft or mergeable_state == "draft":
-        return config.emoji_pr_draft or None
+        return config.emoji_draft or None
     if event_action == "enqueued" or mergeable_state in {"queue", "queued"}:
-        return config.emoji_pr_queued or None
+        return config.emoji_queue or None
     if pr_state == "open":
-        return config.emoji_pr_open or None
+        return config.emoji_open or None
     return None
 
 

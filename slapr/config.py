@@ -28,11 +28,9 @@ class Config(NamedTuple):
 
     review_map: Optional[ReviewMap] = None
 
-    emoji_pr_open: str = ""
-    emoji_pr_draft: str = ""
-    emoji_pr_queued: str = ""
-    emoji_pr_merged: str = ""
-    emoji_pr_closed: str = ""
+    emoji_open: str = ""
+    emoji_draft: str = ""
+    emoji_queue: str = ""
 
     emoji_ci_running: str = ""
     emoji_ci_failing: str = ""
@@ -51,11 +49,9 @@ class Config(NamedTuple):
         Suitable for usage with `sorted(...key=...)` or `some_list.sort(key=...)`.
         """
         review_steps_as_emojis = [
-            self.emoji_pr_open,
-            self.emoji_pr_draft,
-            self.emoji_pr_queued,
-            self.emoji_pr_merged,
-            self.emoji_pr_closed,
+            self.emoji_open,
+            self.emoji_draft,
+            self.emoji_queue,
             self.emoji_review_started,
             self.emoji_commented,
             self.emoji_needs_change,

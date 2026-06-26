@@ -5,6 +5,7 @@ Add Pull Requests status emojis to Slack posts.
 <img src="docs/images/example_screenshot.png"  alt="Example Screenshot" />
 
 On `pull_request_review` or `pull_request` events Slapr will update your slack posts with suitable emojis.
+On `workflow_run` events, Slapr can refresh PR and CI status emojis for the PR associated with the workflow run.
 
 ## Slack posts
 
@@ -37,13 +38,11 @@ GitHub token with following workflow permissions when CI status emojis are enabl
 | `SLAPR_EMOJI_APPROVED`        | The PR has all required approvals and is ready to be merged.                      |
 | `SLAPR_EMOJI_CHANGES_REQUESTED` | Changes are requested for the PR.                                                 |
 | `SLAPR_EMOJI_COMMENTED`       | A review has been submitted with comment only.                                    |
-| `SLAPR_EMOJI_MERGED`          | The PR is merged. Fallback for `SLAPR_EMOJI_PR_MERGED`.                          |
-| `SLAPR_EMOJI_CLOSED`          | The PR is closed. Fallback for `SLAPR_EMOJI_PR_CLOSED`.                          |
-| `SLAPR_EMOJI_PR_OPEN`         | The PR state is open.                                                             |
-| `SLAPR_EMOJI_PR_DRAFT`        | The PR state is draft.                                                            |
-| `SLAPR_EMOJI_PR_QUEUE`        | The PR is in the merge queue.                                                     |
-| `SLAPR_EMOJI_PR_MERGED`       | The PR state is merged.                                                           |
-| `SLAPR_EMOJI_PR_CLOSED`       | The PR state is closed without merge.                                             |
+| `SLAPR_EMOJI_MERGED`          | The PR state is merged.                                                           |
+| `SLAPR_EMOJI_CLOSED`          | The PR state is closed without merge.                                             |
+| `SLAPR_EMOJI_OPEN`            | The PR state is open.                                                             |
+| `SLAPR_EMOJI_DRAFT`           | The PR state is draft.                                                            |
+| `SLAPR_EMOJI_QUEUE`           | The PR is in the merge queue.                                                     |
 | `SLAPR_EMOJI_CI_RUNNING`      | At least one check run or legacy status is pending/running.                       |
 | `SLAPR_EMOJI_CI_FAILING`      | At least one check run or legacy status failed.                                   |
 | `SLAPR_EMOJI_CI_PASSING`      | All observed check runs/statuses are passing, neutral, or skipped.                |
@@ -91,6 +90,12 @@ on:
     types: [submitted]
   pull_request:
     types: [closed]
+  workflow_run:
+    workflows:
+      - "[Push] Lint and Pytests"
+      - "[Push] Build app-server & frontend apps"
+      - "PR Checks"
+    types: [requested, in_progress, completed]
 
 jobs:
   run_slapr:
@@ -107,6 +112,8 @@ jobs:
         SLAPR_BOT_USER_ID: UTMS06TPX
         SLAPR_NUMBER_OF_APPROVALS_REQUIRED: 2 # integer minimum=1 default=1. The number of approvals that are required for the approval emoji to be added in Slack
 ```
+
+Use an explicit `workflow_run.workflows` allowlist for the CI workflows you want to reflect in Slack. Do not include the Slapr workflow itself, or status refreshes can recursively trigger more status refreshes.
 
 ## Troubleshoot
 

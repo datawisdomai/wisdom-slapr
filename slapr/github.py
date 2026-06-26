@@ -29,8 +29,11 @@ class PullRequest(NamedTuple):
     state: str
     merged: bool
     mergeable_state: str
+    url: str = ""
     draft: bool = False
     head_sha: str = ""
+    head_repo_fork: bool = False
+    head_owner_login: str = ""
 
 
 class PullRequestCheckRun(NamedTuple):
@@ -121,8 +124,11 @@ class WebGithubBackend(GithubBackend):
             state=pr.state,
             merged=pr.merged,
             mergeable_state=pr.mergeable_state or "",
+            url=pr.html_url,
             draft=pr.draft,
             head_sha=pr.head.sha,
+            head_repo_fork=pr.head.repo.fork,
+            head_owner_login=pr.head.repo.owner.login,
         )
 
     def get_pr_ci_status(self, pr: PullRequest, ignored_check_names: Tuple[str, ...] = ()) -> str:
