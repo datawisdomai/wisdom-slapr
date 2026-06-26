@@ -28,7 +28,12 @@ def main(config: Config) -> None:
     pr = github.get_pr(pr_number=pr_number)
     reviews = github.get_pr_reviews(pr_number=pr_number)
     pr_url: str = event["pull_request"]["html_url"]
-    print(f"Event PR: {pr_url} - Is merged: {pr.merged}")
+    ci_status = (
+        github.get_pr_ci_status(pr, ignored_check_names=config.ignored_ci_check_names)
+        if config.has_ci_status_emojis
+        else ""
+    )
+    print(f"Event PR: {pr_url} - state: {pr.state} - merged: {pr.merged} - CI: {ci_status or 'disabled'}")
 
     # Determine target channels (with optional team slug for filtering)
     if config.review_map is not None:
@@ -56,12 +61,13 @@ def main(config: Config) -> None:
         if review_emoji:
             new_emojis.add(review_emoji)
 
-        if pr.merged:
-            if config.emoji_merged:
-                new_emojis.add(config.emoji_merged)
-        elif pr.state == "closed":
-            if config.emoji_closed:
-                new_emojis.add(config.emoji_closed)
+        pr_state_emoji = emojis.select_pr_state(pr, config, event_action=event.get("action", ""))
+        if pr_state_emoji:
+            new_emojis.add(pr_state_emoji)
+
+        ci_status_emoji = emojis.select_ci_status(ci_status, config)
+        if ci_status_emoji:
+            new_emojis.add(ci_status_emoji)
 
         _apply_emojis_to_channel(config, slack, new_emojis, pr_url, channel_id)
 

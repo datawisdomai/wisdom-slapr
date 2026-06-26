@@ -38,6 +38,33 @@ inputs:
   emoji-commented:
     description: 'Emoji name for comment-only review. Leave unset or empty to disable.'
     required: false
+  emoji-pr-open:
+    description: 'Emoji name for open PR state. Leave unset or empty to disable.'
+    required: false
+  emoji-pr-draft:
+    description: 'Emoji name for draft PR state. Leave unset or empty to disable.'
+    required: false
+  emoji-pr-queue:
+    description: 'Emoji name for queued PR state. Leave unset or empty to disable.'
+    required: false
+  emoji-pr-merged:
+    description: 'Emoji name for merged PR state. Defaults to emoji-merged when unset.'
+    required: false
+  emoji-pr-closed:
+    description: 'Emoji name for closed PR state. Defaults to emoji-closed when unset.'
+    required: false
+  emoji-ci-running:
+    description: 'Emoji name for running CI status. Leave unset or empty to disable CI status.'
+    required: false
+  emoji-ci-failing:
+    description: 'Emoji name for failing CI status. Leave unset or empty to disable CI status.'
+    required: false
+  emoji-ci-passing:
+    description: 'Emoji name for passing CI status. Leave unset or empty to disable CI status.'
+    required: false
+  ignore-ci-check-names:
+    description: 'Comma-separated check run names to ignore when computing CI status.'
+    required: false
 runs:
   using: 'docker'
   image: 'Dockerfile'
@@ -54,3 +81,12 @@ runs:
     SLAPR_EMOJI_MERGED: ${{ inputs.emoji-merged }}
     SLAPR_EMOJI_CLOSED: ${{ inputs.emoji-closed }}
     SLAPR_EMOJI_COMMENTED: ${{ inputs.emoji-commented }}
+    SLAPR_EMOJI_PR_OPEN: ${{ inputs.emoji-pr-open }}
+    SLAPR_EMOJI_PR_DRAFT: ${{ inputs.emoji-pr-draft }}
+    SLAPR_EMOJI_PR_QUEUE: ${{ inputs.emoji-pr-queue }}
+    SLAPR_EMOJI_PR_MERGED: ${{ inputs.emoji-pr-merged }}
+    SLAPR_EMOJI_PR_CLOSED: ${{ inputs.emoji-pr-closed }}
+    SLAPR_EMOJI_CI_RUNNING: ${{ inputs.emoji-ci-running }}
+    SLAPR_EMOJI_CI_FAILING: ${{ inputs.emoji-ci-failing }}
+    SLAPR_EMOJI_CI_PASSING: ${{ inputs.emoji-ci-passing }}
+    SLAPR_IGNORE_CI_CHECK_NAMES: ${{ inputs.ignore-ci-check-names }}

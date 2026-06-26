@@ -24,16 +24,30 @@ Slack API Token with following permissions
 - `reactions:read`
 - `reactions:write`
 
+GitHub token with following workflow permissions when CI status emojis are enabled:
+
+- `checks: read`
+- `statuses: read`
+
 ## Emoji status
 
-| emoji                        | description                                                  |
-|------------------------------|--------------------------------------------------------------|
-| `SLAPR_EMOJI_REVIEW_STARTED` | The PR has at least 1 in-progress review.                    |
-| `SLAPR_EMOJI_APPROVED`       | The PR has all required approvals and is ready to be merged. |
-| `SLAPR_EMOJI_NEEDS_CHANGES`  | Changes are requested for the PR.                            |
-| `SLAPR_EMOJI_COMMENTED`      | A review has been submitted with comment only.               |
-| `SLAPR_EMOJI_MERGED`         | The PR is merged.                                            |
-| `SLAPR_EMOJI_CLOSED`         | The PR is closed.                                            |
+| emoji                         | description                                                                       |
+|-------------------------------|-----------------------------------------------------------------------------------|
+| `SLAPR_EMOJI_REVIEW_STARTED`  | The PR has at least 1 in-progress review.                                         |
+| `SLAPR_EMOJI_APPROVED`        | The PR has all required approvals and is ready to be merged.                      |
+| `SLAPR_EMOJI_CHANGES_REQUESTED` | Changes are requested for the PR.                                                 |
+| `SLAPR_EMOJI_COMMENTED`       | A review has been submitted with comment only.                                    |
+| `SLAPR_EMOJI_MERGED`          | The PR is merged. Fallback for `SLAPR_EMOJI_PR_MERGED`.                          |
+| `SLAPR_EMOJI_CLOSED`          | The PR is closed. Fallback for `SLAPR_EMOJI_PR_CLOSED`.                          |
+| `SLAPR_EMOJI_PR_OPEN`         | The PR state is open.                                                             |
+| `SLAPR_EMOJI_PR_DRAFT`        | The PR state is draft.                                                            |
+| `SLAPR_EMOJI_PR_QUEUE`        | The PR is in the merge queue.                                                     |
+| `SLAPR_EMOJI_PR_MERGED`       | The PR state is merged.                                                           |
+| `SLAPR_EMOJI_PR_CLOSED`       | The PR state is closed without merge.                                             |
+| `SLAPR_EMOJI_CI_RUNNING`      | At least one check run or legacy status is pending/running.                       |
+| `SLAPR_EMOJI_CI_FAILING`      | At least one check run or legacy status failed.                                   |
+| `SLAPR_EMOJI_CI_PASSING`      | All observed check runs/statuses are passing, neutral, or skipped.                |
+| `SLAPR_IGNORE_CI_CHECK_NAMES` | Comma-separated check run names to exclude from CI status; defaults to `GITHUB_JOB`. |
 
 ## Review Map (multi-channel routing)
 
