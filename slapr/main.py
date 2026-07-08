@@ -50,18 +50,17 @@ def main(config: Config) -> None:
             number_of_approvals_required=config.number_of_approvals_required,
         )
 
+        # Keep exactly one reaction per message: terminal state wins, then the
+        # review outcome, then the review-started marker.
         new_emojis: Set[str] = set()
-        if pr.state != "closed" and config.emoji_review_started:
-            new_emojis.add(config.emoji_review_started)
-        if review_emoji:
+        if pr.merged and config.emoji_merged:
+            new_emojis.add(config.emoji_merged)
+        elif pr.state == "closed" and not pr.merged and config.emoji_closed:
+            new_emojis.add(config.emoji_closed)
+        elif review_emoji:
             new_emojis.add(review_emoji)
-
-        if pr.merged:
-            if config.emoji_merged:
-                new_emojis.add(config.emoji_merged)
-        elif pr.state == "closed":
-            if config.emoji_closed:
-                new_emojis.add(config.emoji_closed)
+        elif pr.state != "closed" and config.emoji_review_started:
+            new_emojis.add(config.emoji_review_started)
 
         _apply_emojis_to_channel(config, slack, new_emojis, pr_url, channel_id)
 

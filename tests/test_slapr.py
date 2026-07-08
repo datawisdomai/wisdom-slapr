@@ -179,42 +179,42 @@ MOCK_EVENT = {
             [Message(text="Need review <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")],
             [Review(state="approved", user=_user("alice"))],
             [],
-            ["test_review_started", "test_approved"],
+            ["test_approved"],
             id="approval",
         ),
         pytest.param(
             [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")],
             [Review(state="changes_requested", user=_user("alice"))],
             [],
-            ["test_review_started", "test_needs_change"],
+            ["test_needs_change"],
             id="changes_requested",
         ),
         pytest.param(
             [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")],
             [Review(state="commented", user=_user("alice"))],
             [],
-            ["test_review_started", "test_commented"],
+            ["test_commented"],
             id="comment",
         ),
         pytest.param(
             [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")],
             [Review(state="changes_requested", user=_user("alice")), Review(state="approved", user=_user("alice"))],
             [Reaction(emoji="test_needs_change", user_ids=["U1234"])],
-            ["test_review_started", "test_approved"],
+            ["test_approved"],
             id="approved-from-changes-requested",
         ),
         pytest.param(
             [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")],
             [Review(state="commented", user=_user("alice")), Review(state="approved", user=_user("alice"))],
             [Reaction(emoji="test_commented", user_ids=["U1234"])],
-            ["test_review_started", "test_approved"],
+            ["test_approved"],
             id="approved-from-commented",
         ),
         pytest.param(
             [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")],
             [Review(state="changes_requested", user=_user("alice")), Review(state="commented", user=_user("alice"))],
             [],
-            ["test_review_started", "test_commented"],
+            ["test_commented"],
             id="commented-after-changes-requested-same-reviewer",
         ),
         pytest.param(
@@ -264,7 +264,7 @@ def test_on_pull_request_review(
                 Reaction(emoji="test_review_started", user_ids=["U1234"]),
                 Reaction(emoji="test_approved", user_ids=["U1234"]),
             ],
-            ["test_approved", "test_merged"],
+            ["test_merged"],
             id="merge-approved-pr",
         ),
         pytest.param(
@@ -274,7 +274,7 @@ def test_on_pull_request_review(
                 Reaction(emoji="test_review_started", user_ids=["U1234"]),
                 Reaction(emoji="test_approved", user_ids=["U1234"]),
             ],
-            ["test_approved", "test_closed"],
+            ["test_closed"],
             id="close-approved-pr",
         ),
     ],
@@ -373,7 +373,7 @@ def test_review_with_review_map_routes_to_team_channel():
     )
     slapr.main(config)
 
-    assert slack_backend.channel_emojis["C_APM"] == ["test_review_started", "test_approved"]
+    assert slack_backend.channel_emojis["C_APM"] == ["test_approved"]
 
 
 def test_review_with_review_map_falls_back_to_default():
@@ -425,7 +425,7 @@ def test_review_with_review_map_falls_back_to_default():
     slapr.main(config)
 
     # Falls back to default channel (tracked in self.emojis)
-    assert slack_backend.emojis == ["test_review_started", "test_approved"]
+    assert slack_backend.emojis == ["test_approved"]
 
 
 def test_merge_with_review_map_targets_requested_team_channels():
@@ -468,7 +468,7 @@ def test_merge_with_review_map_targets_requested_team_channels():
     )
     slapr.main(config)
 
-    assert slack_backend.channel_emojis["C_APM"] == ["test_approved", "test_merged"]
+    assert slack_backend.channel_emojis["C_APM"] == ["test_merged"]
 
 
 def test_review_map_uses_reviewer_state_only():
@@ -525,7 +525,7 @@ def test_review_map_uses_reviewer_state_only():
     slapr.main(config)
 
     # Only bob's review (commented) counts — alice's approval is ignored
-    assert slack_backend.channel_emojis["C_APM"] == ["test_review_started", "test_commented"]
+    assert slack_backend.channel_emojis["C_APM"] == ["test_commented"]
 
 
 def test_review_started_broadcast_to_all_requested_team_channels():
@@ -582,8 +582,8 @@ def test_review_started_broadcast_to_all_requested_team_channels():
     )
     slapr.main(config)
 
-    # alice is in agent-apm: full review status
-    assert slack_backend.channel_emojis["C_APM"] == ["test_review_started", "test_approved"]
+    # alice is in agent-apm: shows the review outcome
+    assert slack_backend.channel_emojis["C_APM"] == ["test_approved"]
     # agent-build was also requested: should get review_started even though alice is not a member
     assert slack_backend.channel_emojis["C_BUILD"] == ["test_review_started"]
 
@@ -623,8 +623,8 @@ def test_multi_channel_ids_post_to_each():
     )
     slapr.main(config)
 
-    assert slack_backend.channel_emojis["C_ONE"] == ["test_review_started", "test_approved"]
-    assert slack_backend.channel_emojis["C_TWO"] == ["test_review_started", "test_approved"]
+    assert slack_backend.channel_emojis["C_ONE"] == ["test_approved"]
+    assert slack_backend.channel_emojis["C_TWO"] == ["test_approved"]
 
 
 @pytest.mark.parametrize(
