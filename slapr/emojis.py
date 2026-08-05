@@ -3,11 +3,19 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/)
 # Copyright 2023-present Datadog, Inc.
 
-import itertools
-from typing import List, Optional, Set, Tuple
+from collections import defaultdict
+from typing import Dict, List, Optional, Set, Tuple
 
 from .github import Review
 from .config import Config
+
+# A comment is not a verdict: it must not clear the author's earlier approval or change request.
+DECISIVE_STATES = ("approved", "changes_requested", "dismissed")
+
+
+def _latest_decisive_state(author_reviews: List[Review]) -> str:
+    decisive = [review for review in author_reviews if review.state in DECISIVE_STATES]
+    return (decisive or author_reviews)[-1].state
 
 
 def select(
@@ -17,10 +25,9 @@ def select(
     number_of_approvals_required: int,
 ) -> Optional[str]:
 
-    all_reviews_by_author = {
-        user_login: list(author_reviews)
-        for user_login, author_reviews in itertools.groupby(reviews, key=lambda review: review.user.login)
-    }
+    all_reviews_by_author: Dict[str, List[Review]] = defaultdict(list)
+    for review in reviews:
+        all_reviews_by_author[review.user.login].append(review)
 
     # Keep only reviews from authors belonging to the same team(s) as the reviewer
     if reviewer_teams:
@@ -33,16 +40,17 @@ def select(
         # No review map or no team match: consider all reviews
         reviews_by_author = all_reviews_by_author
 
-    last_reviews = [reviews[-1] for reviews in reviews_by_author.values() if reviews]
-    unique_states = {review.state for review in last_reviews}
+    last_states = [
+        _latest_decisive_state(author_reviews) for author_reviews in reviews_by_author.values() if author_reviews
+    ]
+    unique_states = set(last_states)
 
     if "changes_requested" in unique_states and config.emoji_needs_change:
         return config.emoji_needs_change
 
-    approval_count = len([review.state for review in last_reviews if review.state == "approved"])
     if (
         "approved" in unique_states
-        and approval_count >= number_of_approvals_required
+        and last_states.count("approved") >= number_of_approvals_required
         and config.emoji_approved
     ):
         return config.emoji_approved
