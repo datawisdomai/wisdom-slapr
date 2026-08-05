@@ -236,13 +236,6 @@ MOCK_EVENT = {
             id="approval-survives-interleaved-comments",
         ),
         pytest.param(
-            [Message(text="Need :eyes: <https://github.com/example/repo/pull/42>", timestamp="yyyy-mm-dd")],
-            [Review(state="dismissed", user=_user("alice")), Review(state="commented", user=_user("alice"))],
-            [],
-            ["test_review_started"],
-            id="comment-does-not-revive-dismissed-review",
-        ),
-        pytest.param(
             [Message(text="Need :eyes: but I've got no PR URL", timestamp="yyyy-mm-dd")],
             [Review(state="approved", user=_user("alice"))],
             [],

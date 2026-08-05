@@ -9,14 +9,6 @@ from typing import Dict, List, Optional, Set, Tuple
 from .github import Review
 from .config import Config
 
-# A comment is not a verdict: it must not clear the author's earlier approval or change request.
-DECISIVE_STATES = ("approved", "changes_requested", "dismissed")
-
-
-def _latest_decisive_state(author_reviews: List[Review]) -> str:
-    decisive = [review for review in author_reviews if review.state in DECISIVE_STATES]
-    return (decisive or author_reviews)[-1].state
-
 
 def select(
     reviewer_teams: List,
@@ -40,9 +32,11 @@ def select(
         # No review map or no team match: consider all reviews
         reviews_by_author = all_reviews_by_author
 
-    last_states = [
-        _latest_decisive_state(author_reviews) for author_reviews in reviews_by_author.values() if author_reviews
-    ]
+    # A comment is not a verdict: it must not clear the author's earlier approval or change request.
+    last_states = []
+    for author_reviews in reviews_by_author.values():
+        verdicts = [review for review in author_reviews if review.state != "commented"]
+        last_states.append((verdicts or author_reviews)[-1].state)
     unique_states = set(last_states)
 
     if "changes_requested" in unique_states and config.emoji_needs_change:
