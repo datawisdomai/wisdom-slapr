@@ -50,7 +50,7 @@ def select(
     if (
         "approved" in unique_states
         and last_states.count("approved") >= number_of_approvals_required
-        and config.emoji_approved
+        and (config.emoji_approved or (has_unresolved_comments and config.emoji_approved_with_comments))
     ):
         if has_unresolved_comments and config.emoji_approved_with_comments:
             return config.emoji_approved_with_comments

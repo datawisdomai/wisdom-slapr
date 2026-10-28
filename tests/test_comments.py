@@ -5,8 +5,16 @@ import pytest
 import slapr
 from slapr.config import Config
 from slapr.github import GithubClient, PullRequest, Review, WebGithubBackend
+from slapr.review_map import ReviewMap
 from slapr.slack import Message, Reaction, SlackClient
-from tests.test_slapr import MOCK_EVENT, MockGithubBackend, MockSlackBackend, MockTeam, MockUser
+from tests.test_slapr import (
+    MOCK_EVENT,
+    MOCK_EVENT_MERGE_WITH_OWNER,
+    MockGithubBackend,
+    MockSlackBackend,
+    MockTeam,
+    MockUser,
+)
 
 
 @pytest.mark.parametrize(
@@ -136,7 +144,8 @@ def test_should_filter_resolved_bot_and_author_threads_across_pages() -> None:
         pytest.param({"reviewer"}, "approved-with-comments", id="reopened"),
     ],
 )
-def test_should_refresh_recent_posts_when_conversations_change(unresolved, expected) -> None:
+@pytest.mark.parametrize("mapped", [False, True])
+def test_should_refresh_recent_posts_when_conversations_change(unresolved, expected, mapped) -> None:
     from slapr.refresh import refresh
 
     message = Message(text=f'<{MOCK_EVENT["pull_request"]["html_url"]}#top|Review>', timestamp="review-post")
@@ -145,21 +154,26 @@ def test_should_refresh_recent_posts_when_conversations_change(unresolved, expec
         messages=[],
         target_message=message,
         reactions=[],
-        channel_messages={"C_DOMAINS": [message, other_repo]},
+        channel_messages={"C_DOMAINS": [message, other_repo], "C_OTHER": [message]},
         channel_reactions={
             "C_DOMAINS": [Reaction("approved-with-comments" if not unresolved else "white_check_mark", ["U_BOT"])]
         },
     )
+    reviews = [Review("approved", MockUser("reviewer"))]
+    if mapped:
+        reviews.append(Review("changes_requested", MockUser("other-reviewer")))
     github = MockGithubBackend(
-        reviews=[Review("approved", MockUser("reviewer"))],
-        event=MOCK_EVENT,
+        reviews=reviews,
+        event=MOCK_EVENT_MERGE_WITH_OWNER,
         pr=PullRequest("open", False, "clean"),
-        unresolved_review_authors=unresolved,
+        unresolved_review_authors=unresolved | ({"other-reviewer"} if mapped else set()),
+        team_members={"domains": ["reviewer"], "other": ["other-reviewer"]},
+        requested_teams_timeline=["domains", "other"],
     )
     config = Config(
         slack_client=SlackClient(backend=slack),
         github_client=GithubClient(backend=github),
-        slack_channel_ids=["C_DOMAINS", "C_OTHER"],
+        slack_channel_ids=["C_OTHER", "C_DOMAINS"],
         slapr_bot_user_id="U_BOT",
         number_of_approvals_required=1,
         emoji_review_started="",
@@ -170,11 +184,15 @@ def test_should_refresh_recent_posts_when_conversations_change(unresolved, expec
         emoji_commented="",
         emoji_approved_with_comments="approved-with-comments",
         comment_status_channel_ids=["C_DOMAINS"],
+        review_map=(
+            ReviewMap({"@datadog/domains": "C_DOMAINS", "@datadog/other": "C_OTHER"}, "C_OTHER") if mapped else None
+        ),
     )
 
     refresh(config, "example/repo")
 
     assert slack.channel_emojis == {"C_DOMAINS": [expected]}
+    assert slack.emojis == []  # Refresh must not broadcast to other channels.
 
 
 def test_should_require_explicit_refresh_channels() -> None:
@@ -196,3 +214,27 @@ def test_should_ignore_other_team_comments_and_disabled_feature() -> None:
     enabled = config._replace(emoji_approved_with_comments="approved-with-comments")
     assert select([], reviews, enabled, 1, unresolved_review_authors={"bob"}) == "approved-with-comments"
     assert select([MockTeam("team", ["alice"])], reviews, enabled, 1, unresolved_review_authors={"bob"}) == "approved"
+
+
+def test_should_allow_approved_with_comments_without_ordinary_approval_emoji() -> None:
+    from slapr.emojis import select
+
+    config = Config(None, None, [], "U_BOT", 1, "", "", "", "", "", "")._replace(
+        emoji_approved_with_comments="approved-with-comments"
+    )
+    reviews = [Review("approved", MockUser("alice"))]
+    assert select([], reviews, config, 1, unresolved_review_authors={"alice"}) == "approved-with-comments"
+    assert select([], reviews, config, 1, unresolved_review_authors=set()) is None
+
+
+def test_should_refresh_only_unambiguous_single_pr_posts() -> None:
+    messages = [
+        Message("<https://github.com/example/repo/pull/42> <https://github.com/example/repo/pull/43>", "stack"),
+        Message("<https://github.com/example/repo/pull/42> <https://github.com/other/repo/pull/1>", "cross-repo"),
+        Message(
+            "<https://github.com/example/repo/pull/42> <https://github.com/example/repo/pull/42/files|Diff>", "single"
+        ),
+        Message("<https://github.com/example/repo/pull/42>", "older"),
+    ]
+    slack = SlackClient(backend=MockSlackBackend(messages, messages[0], []))
+    assert slack.get_review_requests("example/repo", "C_DOMAINS") == {42: "single"}

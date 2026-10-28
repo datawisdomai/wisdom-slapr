@@ -41,12 +41,16 @@ def main(config: Config, event: Optional[dict] = None, message_timestamps: Optio
         requested_teams = github.get_all_requested_teams(org_name, pr_number)
         reviewer_login = event.get("review", {}).get("user", {}).get("login")
         reviewer = github.get_user(reviewer_login) if reviewer_login else None
-        target_channels = _resolve_target_channels(config, requested_teams, pr, reviewer)
+        target_channels = _resolve_target_channels(
+            config, requested_teams, pr, reviewer, refresh=message_timestamps is not None
+        )
     else:
         requested_teams = []
         target_channels = {ch: [] for ch in config.slack_channel_ids}
 
     for channel_id, teams in target_channels.items():
+        if message_timestamps is not None and channel_id not in message_timestamps:
+            continue
 
         review_emoji = emojis.select(
             teams,
@@ -78,6 +82,7 @@ def main(config: Config, event: Optional[dict] = None, message_timestamps: Optio
     # Only on the first review (len==1) — subsequent reviews already have review_started.
     if (
         config.review_map is not None
+        and message_timestamps is None
         and not pr.merged
         and pr.state != "closed"
         and len(reviews) == 1
@@ -93,13 +98,13 @@ def main(config: Config, event: Optional[dict] = None, message_timestamps: Optio
 
 
 def _resolve_target_channels(
-    config: Config, requested_teams: List, pr: PullRequest, reviewer
+    config: Config, requested_teams: List, pr: PullRequest, reviewer, refresh: bool = False
 ) -> Dict[str, List]:
     """Determine which Slack channels to target based on the review map.
 
     Use the Timeline API to get all teams ever requested, since submitted reviews
     are removed from the event payload's requested_teams list.
-    When PR is closed (merged or closed), add all requested channels.
+    When PR is closed or refreshing, add all requested channels.
     Otherwise add only channels the reviewer belongs to
 
     Returns a dict of {channel_id: [team objects]}.
@@ -119,7 +124,7 @@ def _resolve_target_channels(
         channel_id = review_map.team_to_channel.get(full_team, default_channel_id)
         if channel_id is None:
             continue
-        if pr.state == "closed":
+        if pr.state == "closed" or refresh:
             target_channels[channel_id].append(team)
         else:
             is_member = reviewer and team.has_in_members(reviewer)

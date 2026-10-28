@@ -64,7 +64,9 @@ GitHub exposes resolution/reopening as a webhook, but not an Actions trigger.
 Use a scheduled refresh to pick up these changes, plus review events for immediate
 updates. Scheduled/manual runs reconcile PR links in the latest Slack history page
 (normally 100 parent messages) of the explicitly listed comment-status channels.
-Older posts outside this window are not refreshed. Only links to `GITHUB_REPOSITORY`
+Older posts outside this window and posts linking multiple distinct PRs are not refreshed.
+Team filters from the review map are preserved during refresh.
+Only links to `GITHUB_REPOSITORY`
 are considered; fork PRs are skipped as in event-driven runs. Closed PRs with a
 configured terminal emoji reconcile without querying reviews or threads. The schedule is best
 effort and can be delayed by GitHub; `workflow_dispatch` allows a manual refresh.
