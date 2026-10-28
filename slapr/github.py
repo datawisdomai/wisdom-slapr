@@ -4,7 +4,7 @@
 # Copyright 2023-present Datadog, Inc.
 
 import json
-from typing import List, NamedTuple
+from typing import List, NamedTuple, Set
 
 from github import Github
 
@@ -25,6 +25,12 @@ class GithubBackend:
         raise NotImplementedError  # pragma: no cover
 
     def get_pr_reviews(self, pr_number: int) -> List[Review]:
+        raise NotImplementedError  # pragma: no cover
+
+    def get_unresolved_review_authors(self, pr_number: int) -> Set[str]:
+        raise NotImplementedError  # pragma: no cover
+
+    def get_pr_event(self, pr_number: int) -> dict:
         raise NotImplementedError  # pragma: no cover
 
     def get_pr(self, pr_number: int) -> PullRequest:
@@ -53,6 +59,51 @@ class WebGithubBackend(GithubBackend):
     def get_pr_reviews(self, pr_number: int) -> List[Review]:
         reviews = self._gh.get_repo(self.repo).get_pull(pr_number).get_reviews()
         return [Review(state=review.state.lower(), user=review.user) for review in reviews]
+
+    def get_pr_event(self, pr_number: int) -> dict:
+        return {"pull_request": self._gh.get_repo(self.repo).get_pull(pr_number).raw_data}
+
+    def get_unresolved_review_authors(self, pr_number: int) -> Set[str]:
+        # REST review comments omit resolution state; read the thread roots via GraphQL.
+        query = """
+            query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+              repository(owner: $owner, name: $name) {
+                pullRequest(number: $number) {
+                  author { login }
+                  reviewThreads(first: 100, after: $cursor) {
+                    nodes {
+                      isResolved
+                      comments(first: 1) { nodes { author { login __typename } } }
+                    }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+              }
+            }
+        """
+        owner, name = self.repo.split("/")
+        cursor = None
+        authors = set()
+        while True:
+            _, response = self._gh.requester.graphql_query(
+                query, {"owner": owner, "name": name, "number": pr_number, "cursor": cursor}
+            )
+            pr = response["data"]["repository"]["pullRequest"]
+            pr_author = pr["author"]["login"] if pr["author"] else None
+            threads = pr["reviewThreads"]
+            for thread in threads["nodes"]:
+                comments = thread["comments"]["nodes"]
+                author = comments[0]["author"] if comments else None
+                if (
+                    not thread["isResolved"]
+                    and author
+                    and author["__typename"] == "User"
+                    and author["login"] != pr_author
+                ):
+                    authors.add(author["login"])
+            if not threads["pageInfo"]["hasNextPage"]:
+                return authors
+            cursor = threads["pageInfo"]["endCursor"]
 
     def get_pr(self, pr_number: int) -> PullRequest:
         pr = self._gh.get_repo(self.repo).get_pull(pr_number)
@@ -86,6 +137,12 @@ class GithubClient:
 
     def get_pr_reviews(self, pr_number: int) -> List[Review]:
         return self._backend.get_pr_reviews(pr_number)
+
+    def get_unresolved_review_authors(self, pr_number: int) -> Set[str]:
+        return self._backend.get_unresolved_review_authors(pr_number)
+
+    def get_pr_event(self, pr_number: int) -> dict:
+        return self._backend.get_pr_event(pr_number)
 
     def get_pr(self, pr_number: int) -> PullRequest:
         return self._backend.get_pr(pr_number)

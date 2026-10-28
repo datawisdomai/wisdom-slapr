@@ -27,6 +27,9 @@ class Config(NamedTuple):
     emoji_commented: str
 
     review_map: Optional[ReviewMap] = None
+    emoji_approved_with_comments: str = ""
+    emoji_unresolved_comments: str = ""
+    comment_status_channel_ids: Optional[List[str]] = None
 
     @property
     def emojis_by_review_step(self) -> Callable[[str], int]:
@@ -37,8 +40,10 @@ class Config(NamedTuple):
         review_steps_as_emojis = [
             self.emoji_review_started,
             self.emoji_commented,
+            self.emoji_unresolved_comments,
             self.emoji_needs_change,
             self.emoji_approved,
+            self.emoji_approved_with_comments,
             self.emoji_closed,
             self.emoji_merged,
         ]

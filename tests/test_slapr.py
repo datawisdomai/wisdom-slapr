@@ -111,6 +111,7 @@ class MockGithubBackend(GithubBackend):
         pr: PullRequest,
         team_members: Optional[Dict[str, List[str]]] = None,
         requested_teams_timeline: Optional[List[str]] = None,
+        unresolved_review_authors: Optional[Set[str]] = None,
     ) -> None:
         self.reviews = reviews
         self.event = event
@@ -119,6 +120,7 @@ class MockGithubBackend(GithubBackend):
         self.team_members = team_members or {}
         # requested_teams_timeline: list of team slugs from timeline API
         self.requested_teams_timeline = requested_teams_timeline or []
+        self.unresolved_review_authors = unresolved_review_authors or set()
 
     def read_event(self) -> dict:
         return self.event
@@ -130,6 +132,13 @@ class MockGithubBackend(GithubBackend):
     def get_pr_reviews(self, pr_number: int) -> List[Review]:
         assert pr_number == self.event["pull_request"]["number"]
         return list(self.reviews)
+
+    def get_unresolved_review_authors(self, pr_number: int) -> Set[str]:
+        return self.unresolved_review_authors
+
+    def get_pr_event(self, pr_number: int) -> dict:
+        assert pr_number == self.event["pull_request"]["number"]
+        return self.event
 
     def get_organization(self, org: str):
         teams = {

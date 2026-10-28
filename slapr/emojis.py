@@ -15,6 +15,8 @@ def select(
     reviews: List[Review],
     config: Config,
     number_of_approvals_required: int,
+    channel_id: Optional[str] = None,
+    unresolved_review_authors: Optional[Set[str]] = None,
 ) -> Optional[str]:
 
     all_reviews_by_author: Dict[str, List[Review]] = defaultdict(list)
@@ -38,6 +40,9 @@ def select(
         verdicts = [review for review in author_reviews if review.state != "commented"]
         last_states.append((verdicts or author_reviews)[-1].state)
     unique_states = set(last_states)
+    has_unresolved_comments = bool(
+        (unresolved_review_authors or set()) & reviews_by_author.keys()
+    ) and (not config.comment_status_channel_ids or channel_id in config.comment_status_channel_ids)
 
     if "changes_requested" in unique_states and config.emoji_needs_change:
         return config.emoji_needs_change
@@ -45,9 +50,14 @@ def select(
     if (
         "approved" in unique_states
         and last_states.count("approved") >= number_of_approvals_required
-        and config.emoji_approved
+        and (config.emoji_approved or (has_unresolved_comments and config.emoji_approved_with_comments))
     ):
+        if has_unresolved_comments and config.emoji_approved_with_comments:
+            return config.emoji_approved_with_comments
         return config.emoji_approved
+
+    if has_unresolved_comments and config.emoji_unresolved_comments:
+        return config.emoji_unresolved_comments
 
     if "commented" in unique_states and config.emoji_commented:
         return config.emoji_commented

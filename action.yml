@@ -38,6 +38,15 @@ inputs:
   emoji-commented:
     description: 'Emoji name for comment-only review. Leave unset or empty to disable.'
     required: false
+  emoji-approved-with-comments:
+    description: 'Emoji for approved PRs with unresolved human review threads. Empty disables.'
+    required: false
+  emoji-unresolved-comments:
+    description: 'Emoji for unresolved human review threads before approval. Empty disables.'
+    required: false
+  comment-status-channel-ids:
+    description: 'Comma-separated channel IDs for the two unresolved-comment emojis. Empty means all target channels.'
+    required: false
 runs:
   using: 'docker'
   image: 'Dockerfile'
@@ -54,3 +63,6 @@ runs:
     SLAPR_EMOJI_MERGED: ${{ inputs.emoji-merged }}
     SLAPR_EMOJI_CLOSED: ${{ inputs.emoji-closed }}
     SLAPR_EMOJI_COMMENTED: ${{ inputs.emoji-commented }}
+    SLAPR_EMOJI_APPROVED_WITH_COMMENTS: ${{ inputs.emoji-approved-with-comments }}
+    SLAPR_EMOJI_UNRESOLVED_COMMENTS: ${{ inputs.emoji-unresolved-comments }}
+    SLAPR_COMMENT_STATUS_CHANNEL_IDS: ${{ inputs.comment-status-channel-ids }}

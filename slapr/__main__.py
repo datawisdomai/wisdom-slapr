@@ -11,6 +11,7 @@ import slack_sdk
 from .config import Config
 from .github import GithubClient, WebGithubBackend
 from .main import main
+from .refresh import refresh
 from .review_map import ReviewMap
 from .slack import SlackClient, WebSlackBackend
 
@@ -48,7 +49,17 @@ config = Config(
     emoji_merged=os.environ.get("SLAPR_EMOJI_MERGED", ""),
     emoji_closed=os.environ.get("SLAPR_EMOJI_CLOSED", ""),
     emoji_commented=os.environ.get("SLAPR_EMOJI_COMMENTED", ""),
+    emoji_approved_with_comments=os.environ.get("SLAPR_EMOJI_APPROVED_WITH_COMMENTS", ""),
+    emoji_unresolved_comments=os.environ.get("SLAPR_EMOJI_UNRESOLVED_COMMENTS", ""),
+    comment_status_channel_ids=[
+        ch.strip()
+        for ch in os.environ.get("SLAPR_COMMENT_STATUS_CHANNEL_IDS", "").split(",")
+        if ch.strip()
+    ],
     review_map=review_map,
 )
 
-main(config)
+if os.environ.get("GITHUB_EVENT_NAME") in {"schedule", "workflow_dispatch"}:
+    refresh(config, os.environ["GITHUB_REPOSITORY"])
+else:
+    main(config)
