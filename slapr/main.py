@@ -132,6 +132,9 @@ def _resolve_target_channels(
             if is_member:
                 target_channels[channel_id].append(team)
 
+    if refresh and default_channel_id:
+        # Posts reached by an outside-team review use the unfiltered fallback.
+        target_channels.setdefault(default_channel_id, [])
     if target_channels:
         return target_channels
     if default_channel_id:

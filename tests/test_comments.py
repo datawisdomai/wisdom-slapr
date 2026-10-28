@@ -144,8 +144,8 @@ def test_should_filter_resolved_bot_and_author_threads_across_pages() -> None:
         pytest.param({"reviewer"}, "approved-with-comments", id="reopened"),
     ],
 )
-@pytest.mark.parametrize("mapped", [False, True])
-def test_should_refresh_recent_posts_when_conversations_change(unresolved, expected, mapped) -> None:
+@pytest.mark.parametrize("routing", ["unmapped", "mapped", "fallback"])
+def test_should_refresh_recent_posts_when_conversations_change(unresolved, expected, routing) -> None:
     from slapr.refresh import refresh
 
     message = Message(text=f'<{MOCK_EVENT["pull_request"]["html_url"]}#top|Review>', timestamp="review-post")
@@ -160,20 +160,20 @@ def test_should_refresh_recent_posts_when_conversations_change(unresolved, expec
         },
     )
     reviews = [Review("approved", MockUser("reviewer"))]
-    if mapped:
+    if routing == "mapped":
         reviews.append(Review("changes_requested", MockUser("other-reviewer")))
     github = MockGithubBackend(
         reviews=reviews,
         event=MOCK_EVENT_MERGE_WITH_OWNER,
         pr=PullRequest("open", False, "clean"),
-        unresolved_review_authors=unresolved | ({"other-reviewer"} if mapped else set()),
+        unresolved_review_authors=unresolved | ({"other-reviewer"} if routing == "mapped" else set()),
         team_members={"domains": ["reviewer"], "other": ["other-reviewer"]},
-        requested_teams_timeline=["domains", "other"],
+        requested_teams_timeline=["other"] if routing == "fallback" else ["domains", "other"],
     )
     config = Config(
         slack_client=SlackClient(backend=slack),
         github_client=GithubClient(backend=github),
-        slack_channel_ids=["C_OTHER", "C_DOMAINS"],
+        slack_channel_ids=["C_DOMAINS", "C_OTHER"] if routing == "fallback" else ["C_OTHER", "C_DOMAINS"],
         slapr_bot_user_id="U_BOT",
         number_of_approvals_required=1,
         emoji_review_started="",
@@ -185,7 +185,12 @@ def test_should_refresh_recent_posts_when_conversations_change(unresolved, expec
         emoji_approved_with_comments="approved-with-comments",
         comment_status_channel_ids=["C_DOMAINS"],
         review_map=(
-            ReviewMap({"@datadog/domains": "C_DOMAINS", "@datadog/other": "C_OTHER"}, "C_OTHER") if mapped else None
+            ReviewMap(
+                {"@datadog/domains": "C_DOMAINS", "@datadog/other": "C_OTHER"},
+                "C_DOMAINS" if routing == "fallback" else "C_OTHER",
+            )
+            if routing != "unmapped"
+            else None
         ),
     )
 
@@ -232,9 +237,10 @@ def test_should_refresh_only_unambiguous_single_pr_posts() -> None:
         Message("<https://github.com/example/repo/pull/42> <https://github.com/example/repo/pull/43>", "stack"),
         Message("<https://github.com/example/repo/pull/42> <https://github.com/other/repo/pull/1>", "cross-repo"),
         Message(
-            "<https://github.com/example/repo/pull/42> <https://github.com/example/repo/pull/42/files|Diff>", "single"
+            "<https://github.com/example/repo/pull/42> <https://github.com/Example/Repo/pull/42/files|Diff>", "single"
         ),
         Message("<https://github.com/example/repo/pull/42>", "older"),
     ]
     slack = SlackClient(backend=MockSlackBackend(messages, messages[0], []))
     assert slack.get_review_requests("example/repo", "C_DOMAINS") == {42: "single"}
+    assert slack.get_review_requests("Example/REPO", "C_DOMAINS") == {42: "single"}

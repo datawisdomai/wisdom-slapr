@@ -126,11 +126,11 @@ class SlackClient:
         pattern = r"<https://github\.com/([^/<>|\s]+/[^/<>|\s]+)/pull/(\d+)(?=[/#|>])"
         requests = {}
         for message in self._backend.get_latest_messages(channel_id):
-            prs = {(match.group(1), int(match.group(2))) for match in re.finditer(pattern, message.text)}
+            prs = {(match.group(1).lower(), int(match.group(2))) for match in re.finditer(pattern, message.text)}
             if len(prs) != 1:
                 continue
             message_repo, pr_number = prs.pop()
-            if message_repo == repo:
+            if message_repo == repo.lower():
                 requests.setdefault(pr_number, message.timestamp)
         return requests
 
