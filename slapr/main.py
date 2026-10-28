@@ -70,7 +70,7 @@ def main(config: Config, event: Optional[dict] = None, message_timestamps: Optio
             new_emojis.add(config.emoji_closed)
         elif review_emoji:
             new_emojis.add(review_emoji)
-        elif pr.state != "closed" and config.emoji_review_started:
+        elif pr.state != "closed" and reviews and config.emoji_review_started:
             new_emojis.add(config.emoji_review_started)
 
         _apply_emojis_to_channel(

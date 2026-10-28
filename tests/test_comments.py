@@ -210,6 +210,31 @@ def test_should_require_explicit_refresh_channels() -> None:
         refresh(config._replace(comment_status_channel_ids=["C_OTHER"]), "example/repo")
 
 
+@pytest.mark.parametrize("state, merged, expected", [("open", False, []), ("closed", True, ["merged"])])
+def test_should_not_start_review_during_refresh_without_reviews(state, merged, expected) -> None:
+    from slapr.refresh import refresh
+
+    message = Message(f'<{MOCK_EVENT["pull_request"]["html_url"]}>', "review-post")
+    slack = MockSlackBackend([message], message, [])
+    github = MockGithubBackend([], MOCK_EVENT, PullRequest(state, merged, "clean"))
+    config = Config(
+        SlackClient(backend=slack),
+        GithubClient(backend=github),
+        ["C_DOMAINS"],
+        "U_BOT",
+        1,
+        "started",
+        "approved",
+        "changes",
+        "merged",
+        "closed",
+        "",
+        comment_status_channel_ids=["C_DOMAINS"],
+    )
+    refresh(config, "example/repo")
+    assert slack.emojis == expected
+
+
 def test_should_ignore_other_team_comments_and_disabled_feature() -> None:
     from slapr.emojis import select
 
