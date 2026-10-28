@@ -35,6 +35,53 @@ Slack API Token with following permissions
 | `SLAPR_EMOJI_MERGED`         | The PR is merged.                                            |
 | `SLAPR_EMOJI_CLOSED`         | The PR is closed.                                            |
 
+### Unresolved human review conversations (optional)
+
+Set `SLAPR_EMOJI_UNRESOLVED_COMMENTS=added-comments` and
+`SLAPR_EMOJI_APPROVED_WITH_COMMENTS=approved-with-comments` to distinguish human
+feedback awaiting resolution from a clean approval. Slapr checks unresolved review
+threads opened by a human other than the PR author. Bot threads and author replies
+do not count. The reviewer can comment and approve separately; the comment's text
+and age do not matter. Outdated threads still count until resolved. Review summary
+text and general PR discussion comments have no resolvable thread and do not count.
+
+The status is merged/closed first, then changes requested, then approved with
+unresolved comments, then approved, then unresolved comments. Once the last human
+thread is resolved, an approved PR returns to the ordinary approval emoji; a PR
+without approval loses the unresolved-comments emoji. Reopening a thread restores
+it on the next refresh. `SLAPR_EMOJI_COMMENTED` remains the legacy comment-only review status, independent
+of resolution; leave it unset if you want only unresolved feedback represented.
+
+Optionally set `SLAPR_COMMENT_STATUS_CHANNEL_IDS` to comma-separated Slack channel
+IDs to limit the two new emojis. Empty means all configured target channels. Both
+new emojis default to disabled, with no additional API calls when disabled or when
+the PR is closed. The GraphQL query uses the existing token's pull-request read access.
+
+The corresponding action inputs are `emoji-unresolved-comments`,
+`emoji-approved-with-comments`, and `comment-status-channel-ids`.
+
+GitHub exposes resolution/reopening as a webhook, but not an Actions trigger.
+Use a scheduled refresh to pick up these changes, plus review events for immediate
+updates. Scheduled/manual runs reconcile PR links in the latest Slack history page
+(normally 100 parent messages) of the explicitly listed comment-status channels.
+Older posts outside this window are not refreshed. Only links to `GITHUB_REPOSITORY`
+are considered; fork PRs are skipped as in event-driven runs. Closed PRs with a
+configured terminal emoji reconcile without querying reviews or threads. The schedule is best
+effort and can be delayed by GitHub; `workflow_dispatch` allows a manual refresh.
+Periodic refresh requires explicit `SLAPR_COMMENT_STATUS_CHANNEL_IDS` that are also
+in `SLACK_CHANNEL_ID`; it never scans every configured channel implicitly.
+
+```yaml
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+  schedule:
+    - cron: '7,17,27,37,47,57 * * * *'
+  workflow_dispatch:
+  pull_request:
+    types: [closed]
+```
+
 ## Review Map (multi-channel routing)
 
 By default, slapr posts emoji reactions to a single Slack channel (`SLACK_CHANNEL_ID`). With the `review-map` input, you can route reactions to different Slack channels based on which GitHub teams are requested for review.

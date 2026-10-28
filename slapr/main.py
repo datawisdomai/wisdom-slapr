@@ -4,7 +4,7 @@
 # Copyright 2023-present Datadog, Inc.
 
 from collections import defaultdict
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 from . import emojis
 from .config import Config
@@ -12,11 +12,12 @@ from .github import GithubClient, PullRequest
 from .slack import SlackClient
 
 
-def main(config: Config) -> None:
+def main(config: Config, event: Optional[dict] = None, message_timestamps: Optional[Dict[str, str]] = None) -> None:
     slack = config.slack_client
     github = config.github_client
 
-    event = github.read_event()
+    if event is None:
+        event = github.read_event()
 
     is_fork: bool = event["pull_request"]["head"]["repo"]["fork"]
 
@@ -26,7 +27,11 @@ def main(config: Config) -> None:
 
     pr_number: int = event["pull_request"]["number"]
     pr = github.get_pr(pr_number=pr_number)
-    reviews = github.get_pr_reviews(pr_number=pr_number)
+    terminal_emoji = config.emoji_merged if pr.merged else config.emoji_closed if pr.state == "closed" else ""
+    reviews = [] if terminal_emoji else github.get_pr_reviews(pr_number=pr_number)
+    unresolved_review_authors = set()
+    if pr.state != "closed" and (config.emoji_approved_with_comments or config.emoji_unresolved_comments):
+        unresolved_review_authors = github.get_unresolved_review_authors(pr_number)
     pr_url: str = event["pull_request"]["html_url"]
     print(f"Event PR: {pr_url} - Is merged: {pr.merged}")
 
@@ -48,6 +53,8 @@ def main(config: Config) -> None:
             reviews,
             config,
             number_of_approvals_required=config.number_of_approvals_required,
+            channel_id=channel_id,
+            unresolved_review_authors=unresolved_review_authors,
         )
 
         # Keep exactly one reaction per message: terminal state wins, then the
@@ -62,7 +69,10 @@ def main(config: Config) -> None:
         elif pr.state != "closed" and config.emoji_review_started:
             new_emojis.add(config.emoji_review_started)
 
-        _apply_emojis_to_channel(config, slack, new_emojis, pr_url, channel_id)
+        _apply_emojis_to_channel(
+            config, slack, new_emojis, pr_url, channel_id,
+            timestamp=(message_timestamps or {}).get(channel_id),
+        )
 
     # Broadcast review_started to ALL requested team channels, not just the reviewer's.
     # Only on the first review (len==1) — subsequent reviews already have review_started.
@@ -131,8 +141,10 @@ def _apply_emojis_to_channel(
     new_emojis: Set[str],
     pr_url: str,
     channel_id: str,
+    timestamp: Optional[str] = None,
 ) -> None:
-    timestamp = slack.find_timestamp_of_review_requested_message(pr_url=pr_url, channel_id=channel_id)
+    if timestamp is None:
+        timestamp = slack.find_timestamp_of_review_requested_message(pr_url=pr_url, channel_id=channel_id)
     print(f"Slack message timestamp for channel {channel_id}: {timestamp}")
 
     if timestamp is None:

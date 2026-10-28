@@ -122,6 +122,14 @@ class SlackClient:
 
         return None
 
+    def get_review_requests(self, repo: str, channel_id: str) -> Dict[int, str]:
+        pattern = rf"<https://github\.com/{re.escape(repo)}/pull/(\d+)(?=[/#|>])"
+        requests = {}
+        for message in self._backend.get_latest_messages(channel_id):
+            for match in re.finditer(pattern, message.text):
+                requests.setdefault(int(match.group(1)), message.timestamp)
+        return requests
+
     def get_emojis_for_user(self, timestamp: str, channel_id: str, user_id: str) -> Set[str]:
         reactions = self._backend.get_reactions(timestamp=timestamp, channel_id=channel_id)
         return {reaction.emoji for reaction in reactions if user_id in reaction.user_ids}
